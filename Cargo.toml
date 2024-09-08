@@ -10,6 +10,9 @@ version = "0.4.0"
 authors = ["Alexis Sellier <self@cloudhead.io>"]
 edition = "2021"
 
+[lib]
+path = "src/lib.rs"
+
 [workspace]
 members = [
   "common",
@@ -20,6 +23,7 @@ members = [
   "client",
   "wallet",
   "net",
+  "spv",
 ]
 default-members = [
   "common",
@@ -28,6 +32,7 @@ default-members = [
   "test",
   "client",
   "net",
+  "spv",
 ]
 
 [features]
