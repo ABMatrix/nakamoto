@@ -8,10 +8,9 @@ use std::path::Path;
 
 use nakamoto_common::bitcoin::consensus::encode::{Decodable, Encodable};
 
-use nakamoto_common::bitcoin::consensus::{serialize, deserialize};
+use nakamoto_common::bitcoin::consensus::serialize;
 use nakamoto_common::block::store::{Error, Store};
 use nakamoto_common::block::Height;
-use nakamoto_common::block::BlockHeader;
 
 /// Append a block to the end of the stream.
 fn put<H: Sized + Encodable, S: Seek + Write, I: Iterator<Item = H>>(
@@ -21,29 +20,14 @@ fn put<H: Sized + Encodable, S: Seek + Write, I: Iterator<Item = H>>(
 ) -> Result<Height, Error> {
     let mut pos = stream.seek(io::SeekFrom::End(0))?;
     let size = std::mem::size_of::<H>() + seal::BLOCK_LEN;
-  
+
     for header in headers {
-
         let sered = serialize(&header);
-        println!("sered {:?}", sered);
-
-        println!("sk {:?}",sk);
         let sealed = seal::sealing(sered, sk.clone()).unwrap();
-        println!("sealed {:?}", sealed);
-        let unsealed = seal::unsealing(sealed.clone(), sk.clone()).unwrap();
-        println!("unsealed {:?}", unsealed);
-//rm -rf .nakamoto/testnet/headers.db
-//RUST_LOG=client=trace  cargo run --release --bin spv
-        let h: BlockHeader = deserialize(&unsealed)?;
-        println!("h {:?}", h);
-
-        pos += stream.write(&sealed)? as u64;
-        if pos/size as u64 == 5{
-            panic!();
-
-        }
-        //pos += header.consensus_encode(&mut stream)? as u64;
+        let writelen = stream.write(&sealed)? as u64;
+        pos = pos + writelen;
     }
+
     Ok(pos / size as u64)
 }
 
@@ -56,7 +40,6 @@ fn get<H: Decodable, S: Seek + Read>(mut stream: S, ix: u64, sk: Vec<u8>) -> Res
     stream.read_exact(&mut buf)?;
 
     let unsealed = seal::unsealing(buf, sk).unwrap();
-    println!("len {}",unsealed.len());
     H::consensus_decode(&mut unsealed.as_slice()).map_err(Error::from)
 }
 
@@ -85,7 +68,6 @@ impl<H: Decodable> FileReader<H> {
         let size = std::mem::size_of::<H>() + seal::BLOCK_LEN;
 
         if self.queue.is_empty() {
-            println!("cc");
 
             let mut buf = vec![0; size * Self::BATCH_SIZE];
             let from = self.file.seek(io::SeekFrom::Start(self.index))?;
@@ -104,14 +86,11 @@ impl<H: Decodable> FileReader<H> {
             let items = buf.len() / size;
             let mut cursor = io::Cursor::new(buf);
             let mut item = vec![0; size];
-            println!(" items = {items}");
 
             for _ in 0..items {
                 cursor.read_exact(&mut item)?;
-                println!("aa{:?}",item);
 
                 let data2 = seal::unsealing(item.clone(), self.seal.clone()).unwrap();
-                println!("data2 {:?}",data2.len());
 
                 let item = H::consensus_decode(&mut data2.as_slice())?;
                 self.queue.push_back(item);
@@ -220,7 +199,7 @@ impl<H: 'static + Copy + Encodable + Decodable> Store for File<H> {
     /// Rollback the chain to the given height. Behavior is undefined if the given
     /// height is not contained in the store.
     fn rollback(&mut self, height: Height) -> Result<(), Error> {
-        let size = mem::size_of::<H>();
+        let size = mem::size_of::<H>() + seal::BLOCK_LEN;
 
         self.file
             .set_len((height) * size as u64)
@@ -245,7 +224,7 @@ impl<H: 'static + Copy + Encodable + Decodable> Store for File<H> {
     fn len(&self) -> Result<usize, Error> {
         let meta = self.file.metadata()?;
         let len = meta.len();
-        let size = mem::size_of::<H>();
+        let size = mem::size_of::<H>() + seal::BLOCK_LEN;
 
         assert!(len <= usize::MAX as u64);
 
@@ -269,7 +248,7 @@ impl<H: 'static + Copy + Encodable + Decodable> Store for File<H> {
     fn heal(&self) -> Result<(), Error> {
         let meta = self.file.metadata()?;
         let len = meta.len();
-        let size = mem::size_of::<H>();
+        let size = mem::size_of::<H>() + seal::BLOCK_LEN;
 
         assert!(len <= usize::MAX as u64);
 
