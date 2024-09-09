@@ -37,6 +37,9 @@ pub enum Error {
     /// A communication channel error.
     #[error("command channel disconnected")]
     Channel,
+    /// bad sealkey len
+    #[error("BadSealKeylen")]
+    BadSealKeylen,
 }
 
 impl From<chan::SendError<Command>> for Error {

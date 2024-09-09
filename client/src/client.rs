@@ -9,6 +9,7 @@ use std::ops::ControlFlow;
 use std::ops::RangeInclusive;
 use std::path::PathBuf;
 use std::time::{self, SystemTime};
+use std::vec;
 
 pub use crossbeam_channel as chan;
 
@@ -16,6 +17,7 @@ use nakamoto_chain::block::{store, Block};
 use nakamoto_chain::filter;
 use nakamoto_chain::filter::cache::FilterCache;
 use nakamoto_chain::filter::cache::StoredHeader;
+use nakamoto_chain::store::Store;
 use nakamoto_chain::{block::cache::BlockCache, filter::BlockFilter};
 
 use nakamoto_common::bitcoin::network::constants::ServiceFlags;
@@ -70,6 +72,8 @@ pub struct Config {
     pub services: ServiceFlags,
     /// Configured limits.
     pub limits: Limits,
+    /// use seal-io
+    pub seal: Option<Vec<u8>>,
 }
 
 /// Configuration for loading event handling.
@@ -105,9 +109,11 @@ impl LoadingHandler {
 
 impl Config {
     /// Create a new configuration for the given network.
-    pub fn new(network: Network) -> Self {
+    pub fn new(network: Network, root: PathBuf, seal: Option<Vec<u8>>) -> Self {
         Self {
             network,
+            root,
+            seal,
             ..Self::default()
         }
     }
@@ -126,6 +132,7 @@ impl Default for Config {
             hooks: Hooks::default(),
             limits: Limits::default(),
             services: ServiceFlags::NONE,
+            seal: None,
         }
     }
 }
@@ -165,8 +172,8 @@ where
 /// Runs a pre-loaded client.
 pub struct ClientRunner<R> {
     service: Service<
-        BlockCache<store::File<BlockHeader>>,
-        FilterCache<store::File<StoredHeader>>,
+        BlockCache<store::SealFile<BlockHeader>>,
+        FilterCache<store::SealFile<StoredHeader>>,
         peer::Cache,
         RefClock<AdjustedTime<net::SocketAddr>>,
     >,
@@ -266,16 +273,26 @@ impl<R: Reactor> Client<R> {
 
         log::info!(target: "client", "Initializing client ({:?})..", network);
         log::info!(target: "client", "Genesis block hash is {}", network.genesis_hash());
+        
+        let seal = config.clone().seal;
+        let (path, seal) = if seal.is_some() {
+            let sealkey = seal.unwrap();
+            if sealkey.len() != 32 {
+                return Err(Error::BadSealKeylen);
+            }
+            (dir.join("headers-seal.db"), sealkey)
+        }else {
+            (dir.join("headers.db"), vec![8u8;32])
+        };
 
-        let path = dir.join("headers.db");
-        let store = match store::File::create(&path, genesis) {
+        let store = match store::SealFile::create(&path, genesis, seal.clone()) {
             Ok(store) => {
                 log::info!(target: "client", "Initializing new block store {:?}", path);
                 store
             }
             Err(store::Error::Io(e)) if e.kind() == io::ErrorKind::AlreadyExists => {
                 log::info!(target: "client", "Found existing store {:?}", path);
-                let store = store::File::open(path, genesis)?;
+                let store = store::SealFile::open(path, genesis, seal.clone())?;
 
                 if store.check().is_err() {
                     log::warn!(target: "client", "Corruption detected in header store, healing..");
@@ -302,14 +319,14 @@ impl<R: Reactor> Client<R> {
 
         let cfheaders_genesis = filter::cache::StoredHeader::genesis(network);
         let cfheaders_path = dir.join("filters.db");
-        let cfheaders_store = match store::File::create(&cfheaders_path, cfheaders_genesis) {
+        let cfheaders_store = match store::SealFile::create(&cfheaders_path, cfheaders_genesis, seal.clone()) {
             Ok(store) => {
                 log::info!(target: "client", "Initializing new filter header store {:?}", cfheaders_path);
                 store
             }
             Err(store::Error::Io(e)) if e.kind() == io::ErrorKind::AlreadyExists => {
                 log::info!(target: "client", "Found existing store {:?}", cfheaders_path);
-                let store = store::File::open(cfheaders_path, cfheaders_genesis)?;
+                let store = store::SealFile::open(cfheaders_path, cfheaders_genesis, seal.clone())?;
 
                 if store.check().is_err() {
                     log::warn!(target: "client", "Corruption detected in filter store, healing..");

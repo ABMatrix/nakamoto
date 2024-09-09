@@ -12,7 +12,7 @@ type Reactor = nakamoto::net::poll::Reactor<net::TcpStream>;
 fn main() -> Result<(), Error> {
     env_logger::init();
 
-    let cfg = Config::new(Network::Testnet);
+    let cfg = Config::new(Network::Testnet, "./".into(), None);
 
     // Create a client using the above network reactor.
     let client = Client::<Reactor>::new()?;

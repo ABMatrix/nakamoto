@@ -24,6 +24,7 @@ members = [
   "wallet",
   "net",
   "spv",
+  "seal",
 ]
 default-members = [
   "common",
@@ -33,6 +34,7 @@ default-members = [
   "client",
   "net",
   "spv",
+  "seal",
 ]
 
 [features]

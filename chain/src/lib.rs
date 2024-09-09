@@ -6,7 +6,7 @@
 #[deny(
     unsafe_code,
     missing_docs,
-    missing_debug_implementations,
+    //missing_debug_implementations,
     missing_copy_implementations
 )]
 pub mod block;

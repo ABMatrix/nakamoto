@@ -150,10 +150,17 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
         // match the provided genesis, we return an error here.
         if let Some(header) = self.chain.tail.first() {
             let genesis = self.store.genesis().block_hash();
+            println!("genesis {genesis}");
             if genesis != header.prev_blockhash {
+                println!("header {:?}",header);
+
+                println!("header.prev_blockhash {}",header.prev_blockhash);
+
                 return Err(Error::GenesisMismatch);
             }
             if common::network::Network::from(self.params.network).genesis_hash() != genesis {
+                println!("genesis {}",common::network::Network::from(self.params.network).genesis_hash());
+
                 return Err(Error::GenesisMismatch);
             }
         }
