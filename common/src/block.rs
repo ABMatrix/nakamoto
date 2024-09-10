@@ -7,15 +7,15 @@ pub mod store;
 pub mod time;
 pub mod tree;
 
-pub use bitcoin::blockdata::block::{Block, BlockHeader};
+pub use bitcoin::blockdata::block::{Block, Header as BlockHeader};
 pub use bitcoin::blockdata::transaction::Transaction;
 pub use bitcoin::hash_types::BlockHash;
 
 /// Difficulty target of a block.
-pub type Target = bitcoin::util::uint::Uint256;
+pub type Target = bitcoin::pow::Target;
 
 /// Block work.
-pub type Work = bitcoin::util::uint::Uint256;
+pub type Work = bitcoin::pow::Work;
 
 /// Compact difficulty bits (target) of a block.
 pub type Bits = u32;
@@ -62,5 +62,6 @@ pub fn pow_limit_bits(network: &bitcoin::Network) -> Bits {
         bitcoin::Network::Testnet => 0x1d00ffff,
         bitcoin::Network::Regtest => 0x207fffff,
         bitcoin::Network::Signet => 0x1e0377ae,
+        _ => 0x1d00ffff,
     }
 }

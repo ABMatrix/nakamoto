@@ -3,11 +3,11 @@
 
 use std::ops::RangeInclusive;
 
-use bitcoin_hashes::Hash;
+use bitcoin::hashes::Hash;
 use thiserror::Error;
 
 pub use bitcoin::hash_types::{FilterHash, FilterHeader};
-pub use bitcoin::util::bip158::BlockFilter;
+pub use bitcoin::bip158::BlockFilter;
 
 use super::Height;
 use crate::block::store::{self, Genesis};

@@ -7,6 +7,7 @@ pub mod network;
 pub mod p2p;
 
 pub use bitcoin;
+use bitcoin::{OutPoint, ScriptBuf};
 pub use bitcoin_hashes;
 pub use nakamoto_net as net;
 pub use nonempty;
@@ -23,3 +24,7 @@ macro_rules! source {
         &name[..name.len() - 3]
     }};
 }
+
+// pub fn get_script_for_coin(coin: &OutPoint) -> Result<ScriptBuf, BlockFilterError> {
+//     Err(Error::UtxoMissing(*o))
+// }
