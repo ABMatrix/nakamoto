@@ -464,7 +464,7 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
             self.next_difficulty_target(tip.height, tip.time, tip.target(), &self.params)
         };
 
-        let target = BlockHeader::u256_from_compact_target(compact_target);
+        let target = BlockHeader::u256_from_compact_target(header.bits);
 
         match header.validate_pow(&target) {
             Err(bitcoin::util::Error::BlockBadProofOfWork) => {
