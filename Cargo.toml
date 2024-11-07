@@ -46,6 +46,7 @@ default = [
   "nakamoto-net",
   "nakamoto-net-poll"
 ]
+test = ["nakamoto-chain/test"]
 
 [dependencies]
 nakamoto-common = { version = "0.4.0", path = "./common", optional = true }

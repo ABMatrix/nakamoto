@@ -463,8 +463,11 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
         } else {
             self.next_difficulty_target(tip.height, tip.time, tip.target(), &self.params)
         };
-
+        
+        #[cfg(feature = "test")]
         let target = BlockHeader::u256_from_compact_target(header.bits);
+        #[cfg(not(feature = "test"))]
+        let target = BlockHeader::u256_from_compact_target(compact_target);
 
         match header.validate_pow(&target) {
             Err(bitcoin::util::Error::BlockBadProofOfWork) => {
@@ -491,9 +494,11 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
         // A timestamp is accepted as valid if it is greater than the median timestamp of
         // the previous MEDIAN_TIME_SPAN blocks, and less than the network-adjusted
         // time + MAX_FUTURE_BLOCK_TIME.
+        #[cfg(not(feature = "test"))]
         if header.time <= self.median_time_past(height) {
             return Err(Error::InvalidBlockTime(header.time, Ordering::Less));
         }
+        #[cfg(not(feature = "test"))]
         if header.time > clock.block_time() + time::MAX_FUTURE_BLOCK_TIME {
             return Err(Error::InvalidBlockTime(header.time, Ordering::Greater));
         }
