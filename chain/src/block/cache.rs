@@ -159,8 +159,6 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
                 return Err(Error::GenesisMismatch);
             }
             if self.params.network.genesis_hash() != genesis {
-                println!("genesis {}", self.params.network.genesis_hash());
-
                 return Err(Error::GenesisMismatch);
             }
         }

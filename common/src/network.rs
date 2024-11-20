@@ -5,9 +5,12 @@ use bitcoin::blockdata::block::{Block, BlockHeader};
 use bitcoin::hash_types::BlockHash;
 use bitcoin::hashes::hex::FromHex;
 use bitcoin::network::constants::ServiceFlags;
-use bitcoin::TxMerkleNode;
+use bitcoin::{OutPoint, PackedLockTime, Sequence, Transaction, TxIn, TxMerkleNode, TxOut, Witness};
+use bitcoin::blockdata::{opcodes, script};
+use bitcoin::blockdata::constants::COIN_VALUE;
 
-use bitcoin_hashes::{sha256d, Hash};
+use bitcoin_hashes::{sha256d, Hash, hex};
+use bitcoin_hashes::hex::HexIterator;
 
 use crate::block::Height;
 use crate::params::Params;
@@ -215,10 +218,46 @@ impl Network {
 
     /// Get the dogecoin genesis block.
     pub fn dogecoin_genesis_block(&self) -> Block {
-        use bitcoin::blockdata::constants;
-        let btc_block = constants::genesis_block(bitcoin::Network::Regtest);
-        let hash: sha256d::Hash = btc_block.txdata[0].txid().into();
-        let merkle_root = hash.into();
+        let dogecoin_genesis_tx = || -> Transaction {
+            // Base
+            let mut ret = Transaction {
+                version: 1,
+                lock_time: PackedLockTime::ZERO,
+                input: vec![],
+                output: vec![],
+            };
+
+            // Inputs
+            let in_script = script::Builder::new().push_scriptint(486604799)
+                .push_scriptint(4)
+                .push_slice(b"Nintondo")
+                .into_script();
+            ret.input.push(TxIn {
+                previous_output: OutPoint::null(),
+                script_sig: in_script,
+                sequence: Sequence::MAX,
+                witness: Witness::default(),
+            });
+
+            // Outputs
+            let script_bytes: Result<Vec<u8>, hex::Error> =
+                HexIterator::new("040184710fa689ad5023690c80f3a49c8f13f8d45b8c857fbcbc8bc4a8e4d3eb4b10f4d4604fa08dce601aaf0f470216fe1b51850b4acf21b179c45070ac7b03a9").unwrap()
+                    .collect();
+            let out_script = script::Builder::new()
+                .push_slice(script_bytes.unwrap().as_slice())
+                .push_opcode(opcodes::all::OP_CHECKSIG)
+                .into_script();
+            ret.output.push(TxOut {
+                value: 88 * COIN_VALUE,
+                script_pubkey: out_script
+            });
+
+            // end
+            ret
+        };
+        let genesis_tx =  dogecoin_genesis_tx();
+        let hash: sha256d::Hash = genesis_tx.txid().into();
+        let merkle_root: TxMerkleNode = hash.into();
         match self {
             Network::DOGECOINMAINNET => {
                 Block {
@@ -230,7 +269,7 @@ impl Network {
                         bits: 0x1e0ffff0,
                         nonce: 99943,
                     },
-                    txdata: btc_block.txdata,
+                    txdata: vec![genesis_tx],
                 }
             }
             Network::DOGECOINTESTNET => {
@@ -243,7 +282,7 @@ impl Network {
                         bits: 0x1e0ffff0,
                         nonce: 997879,
                     },
-                    txdata: btc_block.txdata,
+                    txdata: vec![genesis_tx],
                 }
             }
             Network::DOGECOINREGTEST => {
@@ -256,7 +295,7 @@ impl Network {
                         bits: 0x207fffff,
                         nonce: 2,
                     },
-                    txdata: btc_block.txdata,
+                    txdata: vec![genesis_tx],
                 }
             }
             _ => unreachable!("should never happened"),
