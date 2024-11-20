@@ -1,7 +1,6 @@
 //!
 //! Manages header synchronization with peers.
 //!
-use nakamoto_common::bitcoin::consensus::params::Params;
 use nakamoto_common::bitcoin::network::constants::ServiceFlags;
 use nakamoto_common::bitcoin::network::message::NetworkMessage;
 use nakamoto_common::bitcoin::network::message_blockdata::{GetHeadersMessage, Inventory};
@@ -10,7 +9,10 @@ use nakamoto_common::block::time::{Clock, LocalDuration, LocalTime};
 use nakamoto_common::block::tree::{BlockReader, BlockTree, Error, ImportResult};
 use nakamoto_common::block::{BlockHash, BlockHeader, Height};
 use nakamoto_common::collections::{AddressBook, HashMap};
+use nakamoto_common::network::Network;
 use nakamoto_common::nonempty::NonEmpty;
+use nakamoto_common::params::Params;
+use crate::fsm::{DOGECOIN_PROTOCOL_VERSION, PROTOCOL_VERSION};
 
 use super::output::{Io, Outbox};
 use super::Event;
@@ -117,7 +119,12 @@ impl<C: Clock> SyncManager<C> {
         let last_peer_sample = None;
         let last_idle = None;
         let inflight = HashMap::with_hasher(rng.into());
-        let outbox = Outbox::default();
+
+        let protocol_version = match config.params.network {
+            Network::Mainnet | Network::Testnet | Network::Regtest | Network::Signet => PROTOCOL_VERSION,
+            Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST => DOGECOIN_PROTOCOL_VERSION
+        };
+        let outbox = Outbox::new(protocol_version);
 
         Self {
             peers,

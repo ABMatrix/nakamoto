@@ -2,14 +2,15 @@
 use std::str::FromStr;
 
 use bitcoin::blockdata::block::{Block, BlockHeader};
-use bitcoin::consensus::params::Params;
 use bitcoin::hash_types::BlockHash;
 use bitcoin::hashes::hex::FromHex;
 use bitcoin::network::constants::ServiceFlags;
+use bitcoin::TxMerkleNode;
 
-use bitcoin_hashes::sha256d;
+use bitcoin_hashes::{Hash, sha256d};
 
 use crate::block::Height;
+use crate::params::Params;
 
 /// Peer services supported by nakamoto.
 #[derive(Debug, Copy, Clone, Default)]
@@ -31,7 +32,7 @@ impl From<Services> for ServiceFlags {
 }
 
 /// Bitcoin peer network.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum Network {
     /// Bitcoin Mainnet.
     Mainnet,
@@ -41,6 +42,12 @@ pub enum Network {
     Regtest,
     /// Bitcoin signet.
     Signet,
+    /// Dogecoin Mainnet.
+    DOGECOINMAINNET,
+    /// Dogecoin Testnet.
+    DOGECOINTESTNET,
+    /// Dogecoin regression test net.
+    DOGECOINREGTEST,
 }
 
 impl Default for Network {
@@ -58,6 +65,9 @@ impl FromStr for Network {
             "testnet" => Ok(Self::Testnet),
             "regtest" => Ok(Self::Regtest),
             "signet" => Ok(Self::Signet),
+            "dogecoin_mainnet" => Ok(Self::DOGECOINMAINNET),
+            "dogecoin_testnet" => Ok(Self::DOGECOINTESTNET),
+            "dogecoin_regtest" => Ok(Self::DOGECOINREGTEST),
             _ => Err(format!("invalid network specified {:?}", s)),
         }
     }
@@ -70,6 +80,7 @@ impl From<Network> for bitcoin::Network {
             Network::Testnet => Self::Testnet,
             Network::Regtest => Self::Regtest,
             Network::Signet => Self::Signet,
+            _ => unreachable!("should never happened")
         }
     }
 }
@@ -93,25 +104,30 @@ impl Network {
             Network::Testnet => 18333,
             Network::Regtest => 18334,
             Network::Signet => 38333,
+            Network::DOGECOINMAINNET => 22556,
+            Network::DOGECOINTESTNET => 44556,
+            Network::DOGECOINREGTEST => 18444,
         }
     }
 
     /// Blockchain checkpoints.
-    pub fn checkpoints(&self) -> Box<dyn Iterator<Item = (Height, BlockHash)>> {
+    pub fn checkpoints(&self) -> Box<dyn Iterator<Item=(Height, BlockHash)>> {
         use crate::block::checkpoints;
 
         let iter = match self {
             Network::Mainnet => checkpoints::MAINNET,
             Network::Testnet => checkpoints::TESTNET,
-            Network::Regtest => checkpoints::REGTEST,
+            Network::Regtest | Network::DOGECOINREGTEST => checkpoints::REGTEST,
             Network::Signet => checkpoints::SIGNET,
+            Network::DOGECOINMAINNET => checkpoints::DOGECOINMAINNET,
+            Network::DOGECOINTESTNET => checkpoints::DOGECOINTESTNET,
         }
-        .iter()
-        .cloned()
-        .map(|(height, hash)| {
-            let hash = BlockHash::from_hex(hash).unwrap();
-            (height, hash)
-        });
+            .iter()
+            .cloned()
+            .map(|(height, hash)| {
+                let hash = BlockHash::from_hex(hash).unwrap();
+                (height, hash)
+            });
 
         Box::new(iter)
     }
@@ -123,6 +139,9 @@ impl Network {
             Network::Testnet => "testnet",
             Network::Regtest => "regtest",
             Network::Signet => "signet",
+            Network::DOGECOINMAINNET => "dogecoin_mainnet",
+            Network::DOGECOINTESTNET => "dogecoin_testnet",
+            Network::DOGECOINREGTEST => "dogecoin_regtest",
         }
     }
 
@@ -147,8 +166,10 @@ impl Network {
                 "seed.testnet.bitcoin.sprovoost.nl",
                 "testnet-seed.bluematt.me",
             ],
-            Network::Regtest => &[], // No seeds
+            Network::Regtest | Network::DOGECOINREGTEST => &[], // No seeds
             Network::Signet => &["seed.signet.bitcoin.sprovoost.nl"],
+            Network::DOGECOINMAINNET => &[], //todo
+            Network::DOGECOINTESTNET => &[], //todo
         }
     }
 }
@@ -171,8 +192,61 @@ impl Network {
     /// Get the genesis block.
     pub fn genesis_block(&self) -> Block {
         use bitcoin::blockdata::constants;
+        match self {
+            Network::DOGECOINMAINNET
+            | Network::DOGECOINTESTNET
+            | Network::DOGECOINREGTEST => self.dogecoin_genesis_block(),
+            _ => constants::genesis_block((*self).into())
+        }
+    }
 
-        constants::genesis_block((*self).into())
+    /// Get the dogecoin genesis block.
+    pub fn dogecoin_genesis_block(&self) -> Block {
+        match self {
+            Network::DOGECOINMAINNET => {
+                let merkle_root = TxMerkleNode::from_str("5b2a3f53f605d62c53e62932dac6925e3d74afa5a4b459745c36d42d0ed26a69").unwrap();
+                Block {
+                    header: BlockHeader {
+                        version: 1,
+                        prev_blockhash: Hash::all_zeros(),
+                        merkle_root,
+                        time: 1386325540,
+                        bits: 0x1e0ffff0,
+                        nonce: 99943,
+                    },
+                    txdata: vec![],
+                }
+            }
+            Network::DOGECOINTESTNET => {
+                let merkle_root = TxMerkleNode::from_str("5b2a3f53f605d62c53e62932dac6925e3d74afa5a4b459745c36d42d0ed26a69").unwrap();
+                Block {
+                    header: BlockHeader {
+                        version: 1,
+                        prev_blockhash: Hash::all_zeros(),
+                        merkle_root,
+                        time: 1391503289,
+                        bits: 0x1e0ffff0,
+                        nonce: 997879,
+                    },
+                    txdata: vec![],
+                }
+            }
+            Network::DOGECOINREGTEST => {
+                let merkle_root = TxMerkleNode::from_str("5b2a3f53f605d62c53e62932dac6925e3d74afa5a4b459745c36d42d0ed26a69").unwrap();
+                Block {
+                    header: BlockHeader {
+                        version: 1,
+                        prev_blockhash: Hash::all_zeros(),
+                        merkle_root,
+                        time: 1296688602,
+                        bits: 0x207fffff,
+                        nonce: 2,
+                    },
+                    txdata: vec![],
+                }
+            }
+            _ => unreachable!("should never happened")
+        }
     }
 
     /// Get the hash of the genesis block of this network.
@@ -185,6 +259,9 @@ impl Network {
             Self::Testnet => genesis::TESTNET,
             Self::Regtest => genesis::REGTEST,
             Self::Signet => genesis::SIGNET,
+            Self::DOGECOINMAINNET => genesis::DOGECOINMAINNET,
+            Self::DOGECOINTESTNET => genesis::DOGECOINTESTNET,
+            Self::DOGECOINREGTEST => genesis::DOGECOINREGTEST,
         };
         BlockHash::from_hash(
             sha256d::Hash::from_slice(hash)
@@ -199,6 +276,11 @@ impl Network {
 
     /// Get the network magic number for this network.
     pub fn magic(&self) -> u32 {
-        bitcoin::Network::from(*self).magic()
+        match self {
+            Network::DOGECOINMAINNET => 0xc0c0c0c0,
+            Network::DOGECOINTESTNET => 0xdcb7c1fc,
+            Network::DOGECOINREGTEST => 0xdab5bffa,
+            _ => bitcoin::Network::from(*self).magic()
+        }
     }
 }

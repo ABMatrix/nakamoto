@@ -5,6 +5,7 @@ pub mod block;
 pub mod collections;
 pub mod network;
 pub mod p2p;
+pub mod params;
 
 pub use bitcoin;
 pub use bitcoin_hashes;

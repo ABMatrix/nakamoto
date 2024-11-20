@@ -11,15 +11,13 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::ops::ControlFlow;
 
-use nakamoto_common as common;
-use nakamoto_common::bitcoin;
 use nakamoto_common::bitcoin::blockdata::block::BlockHeader;
-use nakamoto_common::bitcoin::consensus::params::Params;
+use nakamoto_common::bitcoin::Error::{BlockBadProofOfWork, BlockBadTarget};
 use nakamoto_common::bitcoin::hash_types::BlockHash;
-use nakamoto_common::bitcoin::network::constants::Network;
 use nakamoto_common::bitcoin::util::BitArray;
 
 use nakamoto_common::bitcoin::util::uint::Uint256;
+use nakamoto_common::bitcoin_hashes::Hash;
 use nakamoto_common::block::tree::{self, BlockReader, BlockTree, Branch, Error, ImportResult};
 use nakamoto_common::block::{
     self,
@@ -28,7 +26,9 @@ use nakamoto_common::block::{
     time::{self, Clock},
     Bits, BlockTime, Height, Work,
 };
+use nakamoto_common::network::Network;
 use nakamoto_common::nonempty::NonEmpty;
+use nakamoto_common::params::Params;
 
 /// A block that is being stored by the block cache.
 #[derive(Debug, Clone, Copy)]
@@ -80,7 +80,7 @@ pub struct BlockCache<S: Store> {
     store: S,
 }
 
-impl<S: Store<Header = BlockHeader>> BlockCache<S> {
+impl<S: Store<Header=BlockHeader>> BlockCache<S> {
     /// Create a new `BlockCache` from a `Store`, consensus parameters, and checkpoints.
     pub fn new(
         store: S,
@@ -152,14 +152,14 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
             let genesis = self.store.genesis().block_hash();
             println!("genesis {genesis}");
             if genesis != header.prev_blockhash {
-                println!("header {:?}",header);
+                println!("header {:?}", header);
 
-                println!("header.prev_blockhash {}",header.prev_blockhash);
+                println!("header.prev_blockhash {}", header.prev_blockhash);
 
                 return Err(Error::GenesisMismatch);
             }
-            if common::network::Network::from(self.params.network).genesis_hash() != genesis {
-                println!("genesis {}",common::network::Network::from(self.params.network).genesis_hash());
+            if self.params.network.genesis_hash() != genesis {
+                println!("genesis {}", self.params.network.genesis_hash());
 
                 return Err(Error::GenesisMismatch);
             }
@@ -184,7 +184,7 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
     ///
     /// Panics if the range is negative.
     ///
-    fn range(&self, range: std::ops::Range<Height>) -> impl Iterator<Item = &CachedBlock> + '_ {
+    fn range(&self, range: std::ops::Range<Height>) -> impl Iterator<Item=&CachedBlock> + '_ {
         assert!(
             range.start <= range.end,
             "BlockCache::range: range start must not be greater than range end"
@@ -246,24 +246,29 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
         // is greater than the minimum allowed for this network.
         //
         // We do this because it's cheap to verify and prevents flooding attacks.
-        let target = header.target();
-        match header.validate_pow(&target) {
-            Ok(_) => {
-                let limit = self.params.pow_limit;
-                if target > limit {
-                    return Err(Error::InvalidBlockTarget(target, limit));
+        match self.params.network {
+            Network::Mainnet | Network::Testnet | Network::Regtest | Network::Signet => {
+                let target = header.target();
+                match header.validate_pow(&target) {
+                    Ok(_) => {
+                        let limit = self.params.pow_limit;
+                        if target > limit {
+                            return Err(Error::InvalidBlockTarget(target, limit));
+                        }
+                    }
+                    Err(BlockBadProofOfWork) => {
+                        return Err(Error::InvalidBlockPoW);
+                    }
+                    Err(BlockBadTarget) => unreachable! {
+                        // The only way to get a 'bad target' error is to pass a different target
+                        // than the one specified in the header.
+                    },
+                    Err(_) => unreachable! {
+                        // We've handled all possible errors above.
+                    },
                 }
             }
-            Err(bitcoin::util::Error::BlockBadProofOfWork) => {
-                return Err(Error::InvalidBlockPoW);
-            }
-            Err(bitcoin::util::Error::BlockBadTarget) => unreachable! {
-                // The only way to get a 'bad target' error is to pass a different target
-                // than the one specified in the header.
-            },
-            Err(_) => unreachable! {
-                // We've handled all possible errors above.
-            },
+            _ => {}
         }
 
         if let Some(height) = self.headers.get(&header.prev_blockhash) {
@@ -313,7 +318,7 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
                 best_branch = Some(branch);
                 best_work = added;
                 best_hash = branch.tip;
-            } else if self.params.network != Network::Bitcoin {
+            } else if self.params.network != Network::Mainnet && self.params.network != Network::DOGECOINMAINNET {
                 if added == best_work {
                     // Nb. We intend here to compare the hashes as integers, and pick the lowest
                     // hash as the winner. However, the `PartialEq` on `BlockHash` is implemented on
@@ -361,7 +366,7 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
                     .map(|b| (b.height, b.header))
                     .collect(),
             )
-            .expect("BlockCache::import_block: there is always at least one connected block");
+                .expect("BlockCache::import_block: there is always at least one connected block");
 
             Ok(ImportResult::TipChanged {
                 header,
@@ -463,21 +468,26 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
         } else {
             self.next_difficulty_target(tip.height, tip.time, tip.target(), &self.params)
         };
-        
-        #[cfg(feature = "test")]
-        let target = BlockHeader::u256_from_compact_target(header.bits);
-        #[cfg(not(feature = "test"))]
-        let target = BlockHeader::u256_from_compact_target(compact_target);
 
-        match header.validate_pow(&target) {
-            Err(bitcoin::util::Error::BlockBadProofOfWork) => {
-                return Err(Error::InvalidBlockPoW);
+        #[cfg(feature = "test")]
+            let target = BlockHeader::u256_from_compact_target(header.bits);
+        #[cfg(not(feature = "test"))]
+            let target = BlockHeader::u256_from_compact_target(compact_target);
+
+        match self.params.network {
+            Network::Mainnet | Network::Testnet | Network::Regtest | Network::Signet => {
+                match header.validate_pow(&target) {
+                    Err(BlockBadProofOfWork) => {
+                        return Err(Error::InvalidBlockPoW);
+                    }
+                    Err(BlockBadTarget) => {
+                        return Err(Error::InvalidBlockTarget(header.target(), target));
+                    }
+                    Err(_) => unreachable!(),
+                    Ok(_) => {}
+                }
             }
-            Err(bitcoin::util::Error::BlockBadTarget) => {
-                return Err(Error::InvalidBlockTarget(header.target(), target));
-            }
-            Err(_) => unreachable!(),
-            Ok(_) => {}
+            _ => {}
         }
 
         // Validate against block checkpoints.
@@ -570,9 +580,9 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
     }
 }
 
-impl<S: Store<Header = BlockHeader>> BlockTree for BlockCache<S> {
+impl<S: Store<Header=BlockHeader>> BlockTree for BlockCache<S> {
     /// Import blocks into the block tree. Blocks imported this way don't have to form a chain.
-    fn import_blocks<I: Iterator<Item = BlockHeader>, C: Clock>(
+    fn import_blocks<I: Iterator<Item=BlockHeader>, C: Clock>(
         &mut self,
         chain: I,
         context: &C,
@@ -587,12 +597,12 @@ impl<S: Store<Header = BlockHeader>> BlockTree for BlockCache<S> {
         for (i, header) in chain.enumerate() {
             match self.import_block(header, context) {
                 Ok(ImportResult::TipChanged {
-                    header,
-                    hash,
-                    height,
-                    reverted: r,
-                    connected: c,
-                }) => {
+                       header,
+                       hash,
+                       height,
+                       reverted: r,
+                       connected: c,
+                   }) => {
                     seen.extend(c.iter().map(|(_, h)| h.block_hash()));
                     reverted.extend(r.into_iter().map(|(i, h)| ((i, h.block_hash()), h)));
                     connected.extend(c);
@@ -662,7 +672,7 @@ impl<S: Store<Header = BlockHeader>> BlockTree for BlockCache<S> {
     }
 }
 
-impl<S: Store<Header = BlockHeader>> BlockReader for BlockCache<S> {
+impl<S: Store<Header=BlockHeader>> BlockReader for BlockCache<S> {
     /// Get a block by hash. Only searches the active chain.
     fn get_block(&self, hash: &BlockHash) -> Option<(Height, &BlockHeader)> {
         self.headers
@@ -686,11 +696,11 @@ impl<S: Store<Header = BlockHeader>> BlockReader for BlockCache<S> {
 
         // Since it's not in the active chain, check stale blocks.
         if let Some(Candidate {
-            fork_height,
-            fork_header,
-            headers,
-            ..
-        }) = self.fork(to)
+                        fork_height,
+                        fork_header,
+                        headers,
+                        ..
+                    }) = self.fork(to)
         {
             Some((fork_height, NonEmpty::from((fork_header, headers))))
         } else {
@@ -714,7 +724,7 @@ impl<S: Store<Header = BlockHeader>> BlockReader for BlockCache<S> {
     }
 
     /// Iterate over the longest chain, starting from genesis.
-    fn iter<'a>(&'a self) -> Box<dyn DoubleEndedIterator<Item = (Height, BlockHeader)> + 'a> {
+    fn iter<'a>(&'a self) -> Box<dyn DoubleEndedIterator<Item=(Height, BlockHeader)> + 'a> {
         Box::new(Iter::new(&self.chain).map(|(i, h)| (i, h.header)))
     }
 
@@ -722,7 +732,7 @@ impl<S: Store<Header = BlockHeader>> BlockReader for BlockCache<S> {
     fn range<'a>(
         &'a self,
         range: std::ops::Range<Height>,
-    ) -> Box<dyn Iterator<Item = (Height, BlockHash)> + 'a> {
+    ) -> Box<dyn Iterator<Item=(Height, BlockHash)> + 'a> {
         Box::new(
             self.chain
                 .iter()

@@ -21,7 +21,7 @@ use nakamoto_net::simulator;
 use nakamoto_test::block::cache::model;
 
 use crate as p2p;
-use crate::fsm::Limits;
+use crate::fsm::{DOGECOIN_PROTOCOL_VERSION, Limits};
 
 pub struct PeerDummy {
     pub addr: PeerId,
@@ -43,12 +43,17 @@ impl PeerDummy {
         let time = LocalTime::from_secs(network.genesis().time as u64)
             + LocalDuration::BLOCK_INTERVAL * height;
 
+        let protocol_version = match network {
+            Network::Mainnet | Network::Testnet | Network::Regtest | Network::Signet => PROTOCOL_VERSION,
+            Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST => DOGECOIN_PROTOCOL_VERSION
+        };
+
         Self {
             addr,
             height,
             services,
             relay: false,
-            protocol_version: PROTOCOL_VERSION,
+            protocol_version,
             time,
         }
     }
@@ -216,22 +221,22 @@ impl Peer<Protocol> {
         self.protocol.timer_expired();
     }
 
-    pub fn outputs(&mut self) -> impl Iterator<Item = Io> + '_ {
+    pub fn outputs(&mut self) -> impl Iterator<Item=Io> + '_ {
         self.protocol.drain()
     }
 
     pub fn messages(
         &mut self,
         addr: &net::SocketAddr,
-    ) -> impl Iterator<Item = NetworkMessage> + '_ {
+    ) -> impl Iterator<Item=NetworkMessage> + '_ {
         p2p::fsm::output::test::raw::messages_from(&mut self.protocol, addr)
     }
 
-    pub fn writes(&mut self) -> impl Iterator<Item = (net::SocketAddr, NetworkMessage)> + '_ {
+    pub fn writes(&mut self) -> impl Iterator<Item=(net::SocketAddr, NetworkMessage)> + '_ {
         p2p::fsm::output::test::raw::messages(&mut self.protocol)
     }
 
-    pub fn events(&mut self) -> impl Iterator<Item = Event> + '_ {
+    pub fn events(&mut self) -> impl Iterator<Item=Event> + '_ {
         self.protocol.drain().filter_map(|o| match o {
             Io::Event(e) => Some(e),
             _ => None,

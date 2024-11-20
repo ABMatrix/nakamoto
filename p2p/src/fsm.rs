@@ -39,7 +39,6 @@ use std::sync::Arc;
 
 use nakamoto_common::bitcoin::blockdata::block::BlockHeader;
 use nakamoto_common::bitcoin::consensus::encode;
-use nakamoto_common::bitcoin::consensus::params::Params;
 use nakamoto_common::bitcoin::network::constants::ServiceFlags;
 use nakamoto_common::bitcoin::network::message::{NetworkMessage, RawNetworkMessage};
 use nakamoto_common::bitcoin::network::message_blockdata::Inventory;
@@ -63,6 +62,7 @@ use thiserror::Error;
 
 /// Peer-to-peer protocol version.
 pub const PROTOCOL_VERSION: u32 = 70016;
+pub const DOGECOIN_PROTOCOL_VERSION: u32 = 70015;
 /// Minimum supported peer protocol version.
 /// This version includes support for the `sendheaders` feature.
 pub const MIN_PROTOCOL_VERSION: u32 = 70012;
@@ -292,6 +292,8 @@ pub enum CommandError {
 }
 
 pub use cbfmgr::GetFiltersError;
+use nakamoto_common::network::Network;
+use nakamoto_common::params::Params;
 
 /// Holds functions that are used to hook into or alter protocol behavior.
 #[derive(Clone)]
@@ -411,7 +413,7 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        Self {
+        let mut conf = Self {
             network: network::Network::default(),
             params: Params::new(network::Network::default().into()),
             connect: Vec::new(),
@@ -424,7 +426,12 @@ impl Default for Config {
             user_agent: USER_AGENT,
             hooks: Hooks::default(),
             limits: Limits::default(),
+        };
+        if [network::Network::DOGECOINMAINNET, network::Network::DOGECOINTESTNET, network::Network::DOGECOINREGTEST]
+            .contains(&conf.network) {
+            conf.protocol_version = DOGECOIN_PROTOCOL_VERSION;
         }
+        conf
     }
 }
 
@@ -497,7 +504,7 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> StateMa
             rng.clone(),
             clock.clone(),
         );
-        let pingmgr = PingManager::new(ping_timeout, rng.clone(), clock.clone());
+        let pingmgr = PingManager::new(ping_timeout, rng.clone(), clock.clone(), config.network);
         let cbfmgr = FilterManager::new(
             cbfmgr::Config {
                 filter_cache_size: limits.filter_cache_size,
@@ -506,10 +513,17 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> StateMa
             rng.clone(),
             filters,
             clock.clone(),
+            config.network
         );
+
+        let protocol_version = match config.network {
+            Network::Mainnet | Network::Testnet | Network::Regtest | Network::Signet => PROTOCOL_VERSION,
+            Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST => DOGECOIN_PROTOCOL_VERSION
+        };
+
         let peermgr = PeerManager::new(
             peermgr::Config {
-                protocol_version: PROTOCOL_VERSION,
+                protocol_version,
                 whitelist,
                 persistent: connect,
                 domains: domains.clone(),
@@ -534,8 +548,9 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> StateMa
             rng.clone(),
             peers,
             clock.clone(),
+            config.network
         );
-        let invmgr = InventoryManager::new(rng, clock.clone());
+        let invmgr = InventoryManager::new(rng, clock.clone(), config.network);
 
         Self {
             tree,
@@ -559,14 +574,14 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> StateMa
     }
 
     /// Create a draining iterator over the protocol outputs.
-    pub fn drain(&mut self) -> Box<dyn Iterator<Item = Io> + '_> {
+    pub fn drain(&mut self) -> Box<dyn Iterator<Item=Io> + '_> {
         Box::new(std::iter::from_fn(|| self.next()))
     }
 
     /// Send a message to a all peers matching the predicate.
     fn broadcast<Q>(&mut self, msg: NetworkMessage, predicate: Q) -> Vec<PeerId>
-    where
-        Q: Fn(&Peer) -> bool,
+        where
+            Q: Fn(&Peer) -> bool,
     {
         let mut peers = Vec::new();
 
@@ -581,7 +596,7 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> StateMa
 }
 
 impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> Iterator
-    for StateMachine<T, F, P, C>
+for StateMachine<T, F, P, C>
 {
     type Item = Io;
 
@@ -743,7 +758,7 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> StateMa
 }
 
 impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> traits::StateMachine
-    for StateMachine<T, F, P, C>
+for StateMachine<T, F, P, C>
 {
     type Message = RawNetworkMessage;
     type Event = Event;
@@ -833,7 +848,7 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> traits:
         self.cbfmgr.timer_expired(&self.tree);
 
         #[cfg(not(test))]
-        let local_time = self.clock.local_time();
+            let local_time = self.clock.local_time();
         #[cfg(not(test))]
         if local_time - self.last_tick >= LocalDuration::from_secs(10) {
             let (tip, _) = self.tree.tip();
