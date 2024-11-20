@@ -111,7 +111,7 @@ impl Network {
     }
 
     /// Blockchain checkpoints.
-    pub fn checkpoints(&self) -> Box<dyn Iterator<Item = (Height, BlockHash)>> {
+    pub fn checkpoints(&self) -> Box<dyn Iterator<Item=(Height, BlockHash)>> {
         use crate::block::checkpoints;
 
         let iter = match self {
@@ -122,12 +122,12 @@ impl Network {
             Network::DOGECOINMAINNET => checkpoints::DOGECOINMAINNET,
             Network::DOGECOINTESTNET => checkpoints::DOGECOINTESTNET,
         }
-        .iter()
-        .cloned()
-        .map(|(height, hash)| {
-            let hash = BlockHash::from_hex(hash).unwrap();
-            (height, hash)
-        });
+            .iter()
+            .cloned()
+            .map(|(height, hash)| {
+                let hash = BlockHash::from_hex(hash).unwrap();
+                (height, hash)
+            });
 
         Box::new(iter)
     }
@@ -168,8 +168,21 @@ impl Network {
             ],
             Network::Regtest | Network::DOGECOINREGTEST => &[], // No seeds
             Network::Signet => &["seed.signet.bitcoin.sprovoost.nl"],
-            Network::DOGECOINMAINNET => &[], //todo
-            Network::DOGECOINTESTNET => &[], //todo
+            Network::DOGECOINMAINNET => &[
+                "multidoge.org",
+                "seed.multidoge.org",
+                "seed2.multidoge.org",
+            ],
+            Network::DOGECOINTESTNET => &[
+                // "45.63.86.162",
+                // "44.211.225.142",
+                // "94.62.224.95",
+                // "198.58.102.18",
+                // "139.167.11.99",
+                // "104.237.131.138",
+                "jrn.me.uk",
+                "testseed.jrn.me.uk",
+            ],
         }
     }
 }
@@ -207,7 +220,7 @@ impl Network {
                 let merkle_root = TxMerkleNode::from_str(
                     "5b2a3f53f605d62c53e62932dac6925e3d74afa5a4b459745c36d42d0ed26a69",
                 )
-                .unwrap();
+                    .unwrap();
                 Block {
                     header: BlockHeader {
                         version: 1,
@@ -224,7 +237,7 @@ impl Network {
                 let merkle_root = TxMerkleNode::from_str(
                     "5b2a3f53f605d62c53e62932dac6925e3d74afa5a4b459745c36d42d0ed26a69",
                 )
-                .unwrap();
+                    .unwrap();
                 Block {
                     header: BlockHeader {
                         version: 1,
@@ -241,7 +254,7 @@ impl Network {
                 let merkle_root = TxMerkleNode::from_str(
                     "5b2a3f53f605d62c53e62932dac6925e3d74afa5a4b459745c36d42d0ed26a69",
                 )
-                .unwrap();
+                    .unwrap();
                 Block {
                     header: BlockHeader {
                         version: 1,
