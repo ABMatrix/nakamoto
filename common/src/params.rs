@@ -40,26 +40,11 @@ const MAX_BITS_REGTEST: Uint256 = Uint256([
 ]);
 
 /// Lowest possible difficulty for DOGECOINMainnet.
-const MAX_BITS_DOGEMAINNET: Uint256 = Uint256([
-    0x0000000000000000u64,
-    0xFFFFFFFFFFFFFFFFu64,
-    0xFFFFFFFFFFFFFFFFu64,
-    0x00000FFFFFFFFFFFu64,
-]);
+const MAX_BITS_DOGEMAINNET: Uint256 = MAX_BITS_BITCOIN;
 /// Lowest possible difficulty for DOGECOINTestnet.
-const DOGE_MAX_DOGETESTNET: Uint256 = Uint256([
-    0x0000000000000000u64,
-    0xFFFFFFFFFFFFFFFFu64,
-    0xFFFFFFFFFFFFFFFFu64,
-    0x00000FFFFFFFFFFFu64,
-]);
+const DOGE_MAX_DOGETESTNET: Uint256 = MAX_BITS_TESTNET;
 /// Lowest possible difficulty for DOGECOINRegtest.
-const DOGE_MAX_DOGEREGTEST: Uint256 = Uint256([
-    0x7FFFFFFFFFFFFFFFu64,
-    0xFFFFFFFFFFFFFFFFu64,
-    0xFFFFFFFFFFFFFFFFu64,
-    0xFFFFFFFFFFFFFFFFu64,
-]);
+const DOGE_MAX_DOGEREGTEST: Uint256 = MAX_BITS_REGTEST;
 
 /// Parameters that influence chain consensus.
 #[derive(Debug, Clone)]

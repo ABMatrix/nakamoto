@@ -215,12 +215,12 @@ impl Network {
 
     /// Get the dogecoin genesis block.
     pub fn dogecoin_genesis_block(&self) -> Block {
+        use bitcoin::blockdata::constants;
+        let btc_block = constants::genesis_block(bitcoin::Network::Regtest);
+        let hash: sha256d::Hash = btc_block.txdata[0].txid().into();
+        let merkle_root = hash.into();
         match self {
             Network::DOGECOINMAINNET => {
-                let merkle_root = TxMerkleNode::from_str(
-                    "5b2a3f53f605d62c53e62932dac6925e3d74afa5a4b459745c36d42d0ed26a69",
-                )
-                    .unwrap();
                 Block {
                     header: BlockHeader {
                         version: 1,
@@ -230,14 +230,10 @@ impl Network {
                         bits: 0x1e0ffff0,
                         nonce: 99943,
                     },
-                    txdata: vec![],
+                    txdata: btc_block.txdata,
                 }
             }
             Network::DOGECOINTESTNET => {
-                let merkle_root = TxMerkleNode::from_str(
-                    "5b2a3f53f605d62c53e62932dac6925e3d74afa5a4b459745c36d42d0ed26a69",
-                )
-                    .unwrap();
                 Block {
                     header: BlockHeader {
                         version: 1,
@@ -247,14 +243,10 @@ impl Network {
                         bits: 0x1e0ffff0,
                         nonce: 997879,
                     },
-                    txdata: vec![],
+                    txdata: btc_block.txdata,
                 }
             }
             Network::DOGECOINREGTEST => {
-                let merkle_root = TxMerkleNode::from_str(
-                    "5b2a3f53f605d62c53e62932dac6925e3d74afa5a4b459745c36d42d0ed26a69",
-                )
-                    .unwrap();
                 Block {
                     header: BlockHeader {
                         version: 1,
@@ -264,7 +256,7 @@ impl Network {
                         bits: 0x207fffff,
                         nonce: 2,
                     },
-                    txdata: vec![],
+                    txdata: btc_block.txdata,
                 }
             }
             _ => unreachable!("should never happened"),
@@ -299,9 +291,9 @@ impl Network {
     /// Get the network magic number for this network.
     pub fn magic(&self) -> u32 {
         match self {
-            Network::DOGECOINMAINNET => 0xc0c0c0c0,
-            Network::DOGECOINTESTNET => 0xdcb7c1fc,
-            Network::DOGECOINREGTEST => 0xdab5bffa,
+            Network::DOGECOINMAINNET => 0xC0C0C0C0,
+            Network::DOGECOINTESTNET => 0xDCB7C1FC,
+            Network::DOGECOINREGTEST => 0xDAB5BFFA,
             _ => bitcoin::Network::from(*self).magic(),
         }
     }
