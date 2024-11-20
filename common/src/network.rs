@@ -7,7 +7,7 @@ use bitcoin::hashes::hex::FromHex;
 use bitcoin::network::constants::ServiceFlags;
 use bitcoin::TxMerkleNode;
 
-use bitcoin_hashes::{Hash, sha256d};
+use bitcoin_hashes::{sha256d, Hash};
 
 use crate::block::Height;
 use crate::params::Params;
@@ -80,7 +80,7 @@ impl From<Network> for bitcoin::Network {
             Network::Testnet => Self::Testnet,
             Network::Regtest => Self::Regtest,
             Network::Signet => Self::Signet,
-            _ => unreachable!("should never happened")
+            _ => unreachable!("should never happened"),
         }
     }
 }
@@ -111,7 +111,7 @@ impl Network {
     }
 
     /// Blockchain checkpoints.
-    pub fn checkpoints(&self) -> Box<dyn Iterator<Item=(Height, BlockHash)>> {
+    pub fn checkpoints(&self) -> Box<dyn Iterator<Item = (Height, BlockHash)>> {
         use crate::block::checkpoints;
 
         let iter = match self {
@@ -122,12 +122,12 @@ impl Network {
             Network::DOGECOINMAINNET => checkpoints::DOGECOINMAINNET,
             Network::DOGECOINTESTNET => checkpoints::DOGECOINTESTNET,
         }
-            .iter()
-            .cloned()
-            .map(|(height, hash)| {
-                let hash = BlockHash::from_hex(hash).unwrap();
-                (height, hash)
-            });
+        .iter()
+        .cloned()
+        .map(|(height, hash)| {
+            let hash = BlockHash::from_hex(hash).unwrap();
+            (height, hash)
+        });
 
         Box::new(iter)
     }
@@ -193,10 +193,10 @@ impl Network {
     pub fn genesis_block(&self) -> Block {
         use bitcoin::blockdata::constants;
         match self {
-            Network::DOGECOINMAINNET
-            | Network::DOGECOINTESTNET
-            | Network::DOGECOINREGTEST => self.dogecoin_genesis_block(),
-            _ => constants::genesis_block((*self).into())
+            Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST => {
+                self.dogecoin_genesis_block()
+            }
+            _ => constants::genesis_block((*self).into()),
         }
     }
 
@@ -204,7 +204,10 @@ impl Network {
     pub fn dogecoin_genesis_block(&self) -> Block {
         match self {
             Network::DOGECOINMAINNET => {
-                let merkle_root = TxMerkleNode::from_str("5b2a3f53f605d62c53e62932dac6925e3d74afa5a4b459745c36d42d0ed26a69").unwrap();
+                let merkle_root = TxMerkleNode::from_str(
+                    "5b2a3f53f605d62c53e62932dac6925e3d74afa5a4b459745c36d42d0ed26a69",
+                )
+                .unwrap();
                 Block {
                     header: BlockHeader {
                         version: 1,
@@ -218,7 +221,10 @@ impl Network {
                 }
             }
             Network::DOGECOINTESTNET => {
-                let merkle_root = TxMerkleNode::from_str("5b2a3f53f605d62c53e62932dac6925e3d74afa5a4b459745c36d42d0ed26a69").unwrap();
+                let merkle_root = TxMerkleNode::from_str(
+                    "5b2a3f53f605d62c53e62932dac6925e3d74afa5a4b459745c36d42d0ed26a69",
+                )
+                .unwrap();
                 Block {
                     header: BlockHeader {
                         version: 1,
@@ -232,7 +238,10 @@ impl Network {
                 }
             }
             Network::DOGECOINREGTEST => {
-                let merkle_root = TxMerkleNode::from_str("5b2a3f53f605d62c53e62932dac6925e3d74afa5a4b459745c36d42d0ed26a69").unwrap();
+                let merkle_root = TxMerkleNode::from_str(
+                    "5b2a3f53f605d62c53e62932dac6925e3d74afa5a4b459745c36d42d0ed26a69",
+                )
+                .unwrap();
                 Block {
                     header: BlockHeader {
                         version: 1,
@@ -245,7 +254,7 @@ impl Network {
                     txdata: vec![],
                 }
             }
-            _ => unreachable!("should never happened")
+            _ => unreachable!("should never happened"),
         }
     }
 
@@ -280,7 +289,7 @@ impl Network {
             Network::DOGECOINMAINNET => 0xc0c0c0c0,
             Network::DOGECOINTESTNET => 0xdcb7c1fc,
             Network::DOGECOINREGTEST => 0xdab5bffa,
-            _ => bitcoin::Network::from(*self).magic()
+            _ => bitcoin::Network::from(*self).magic(),
         }
     }
 }

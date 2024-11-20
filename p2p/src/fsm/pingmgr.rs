@@ -12,7 +12,7 @@ use nakamoto_common::block::time::{Clock, LocalDuration, LocalTime};
 use nakamoto_common::collections::HashMap;
 use nakamoto_common::network::Network;
 
-use crate::fsm::{DOGECOIN_PROTOCOL_VERSION, PeerId, PROTOCOL_VERSION};
+use crate::fsm::{PeerId, DOGECOIN_PROTOCOL_VERSION, PROTOCOL_VERSION};
 
 use super::{
     output::{Io, Outbox},
@@ -77,11 +77,20 @@ impl<C> Iterator for PingManager<C> {
 
 impl<C: Clock> PingManager<C> {
     /// Create a new ping manager.
-    pub fn new(ping_timeout: LocalDuration, rng: fastrand::Rng, clock: C, network: Network) -> Self {
+    pub fn new(
+        ping_timeout: LocalDuration,
+        rng: fastrand::Rng,
+        clock: C,
+        network: Network,
+    ) -> Self {
         let peers = HashMap::with_hasher(rng.clone().into());
         let protocol_version = match network {
-            Network::Mainnet | Network::Testnet | Network::Regtest | Network::Signet => PROTOCOL_VERSION,
-            Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST => DOGECOIN_PROTOCOL_VERSION
+            Network::Mainnet | Network::Testnet | Network::Regtest | Network::Signet => {
+                PROTOCOL_VERSION
+            }
+            Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST => {
+                DOGECOIN_PROTOCOL_VERSION
+            }
         };
         let outbox = Outbox::new(protocol_version);
 

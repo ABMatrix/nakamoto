@@ -12,9 +12,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::ops::ControlFlow;
 
 use nakamoto_common::bitcoin::blockdata::block::BlockHeader;
-use nakamoto_common::bitcoin::Error::{BlockBadProofOfWork, BlockBadTarget};
 use nakamoto_common::bitcoin::hash_types::BlockHash;
 use nakamoto_common::bitcoin::util::BitArray;
+use nakamoto_common::bitcoin::Error::{BlockBadProofOfWork, BlockBadTarget};
 
 use nakamoto_common::bitcoin::util::uint::Uint256;
 use nakamoto_common::bitcoin_hashes::Hash;
@@ -80,7 +80,7 @@ pub struct BlockCache<S: Store> {
     store: S,
 }
 
-impl<S: Store<Header=BlockHeader>> BlockCache<S> {
+impl<S: Store<Header = BlockHeader>> BlockCache<S> {
     /// Create a new `BlockCache` from a `Store`, consensus parameters, and checkpoints.
     pub fn new(
         store: S,
@@ -184,7 +184,7 @@ impl<S: Store<Header=BlockHeader>> BlockCache<S> {
     ///
     /// Panics if the range is negative.
     ///
-    fn range(&self, range: std::ops::Range<Height>) -> impl Iterator<Item=&CachedBlock> + '_ {
+    fn range(&self, range: std::ops::Range<Height>) -> impl Iterator<Item = &CachedBlock> + '_ {
         assert!(
             range.start <= range.end,
             "BlockCache::range: range start must not be greater than range end"
@@ -318,7 +318,9 @@ impl<S: Store<Header=BlockHeader>> BlockCache<S> {
                 best_branch = Some(branch);
                 best_work = added;
                 best_hash = branch.tip;
-            } else if self.params.network != Network::Mainnet && self.params.network != Network::DOGECOINMAINNET {
+            } else if self.params.network != Network::Mainnet
+                && self.params.network != Network::DOGECOINMAINNET
+            {
                 if added == best_work {
                     // Nb. We intend here to compare the hashes as integers, and pick the lowest
                     // hash as the winner. However, the `PartialEq` on `BlockHash` is implemented on
@@ -366,7 +368,7 @@ impl<S: Store<Header=BlockHeader>> BlockCache<S> {
                     .map(|b| (b.height, b.header))
                     .collect(),
             )
-                .expect("BlockCache::import_block: there is always at least one connected block");
+            .expect("BlockCache::import_block: there is always at least one connected block");
 
             Ok(ImportResult::TipChanged {
                 header,
@@ -470,9 +472,9 @@ impl<S: Store<Header=BlockHeader>> BlockCache<S> {
         };
 
         #[cfg(feature = "test")]
-            let target = BlockHeader::u256_from_compact_target(header.bits);
+        let target = BlockHeader::u256_from_compact_target(header.bits);
         #[cfg(not(feature = "test"))]
-            let target = BlockHeader::u256_from_compact_target(compact_target);
+        let target = BlockHeader::u256_from_compact_target(compact_target);
 
         match self.params.network {
             Network::Mainnet | Network::Testnet | Network::Regtest | Network::Signet => {
@@ -580,9 +582,9 @@ impl<S: Store<Header=BlockHeader>> BlockCache<S> {
     }
 }
 
-impl<S: Store<Header=BlockHeader>> BlockTree for BlockCache<S> {
+impl<S: Store<Header = BlockHeader>> BlockTree for BlockCache<S> {
     /// Import blocks into the block tree. Blocks imported this way don't have to form a chain.
-    fn import_blocks<I: Iterator<Item=BlockHeader>, C: Clock>(
+    fn import_blocks<I: Iterator<Item = BlockHeader>, C: Clock>(
         &mut self,
         chain: I,
         context: &C,
@@ -597,12 +599,12 @@ impl<S: Store<Header=BlockHeader>> BlockTree for BlockCache<S> {
         for (i, header) in chain.enumerate() {
             match self.import_block(header, context) {
                 Ok(ImportResult::TipChanged {
-                       header,
-                       hash,
-                       height,
-                       reverted: r,
-                       connected: c,
-                   }) => {
+                    header,
+                    hash,
+                    height,
+                    reverted: r,
+                    connected: c,
+                }) => {
                     seen.extend(c.iter().map(|(_, h)| h.block_hash()));
                     reverted.extend(r.into_iter().map(|(i, h)| ((i, h.block_hash()), h)));
                     connected.extend(c);
@@ -672,7 +674,7 @@ impl<S: Store<Header=BlockHeader>> BlockTree for BlockCache<S> {
     }
 }
 
-impl<S: Store<Header=BlockHeader>> BlockReader for BlockCache<S> {
+impl<S: Store<Header = BlockHeader>> BlockReader for BlockCache<S> {
     /// Get a block by hash. Only searches the active chain.
     fn get_block(&self, hash: &BlockHash) -> Option<(Height, &BlockHeader)> {
         self.headers
@@ -696,11 +698,11 @@ impl<S: Store<Header=BlockHeader>> BlockReader for BlockCache<S> {
 
         // Since it's not in the active chain, check stale blocks.
         if let Some(Candidate {
-                        fork_height,
-                        fork_header,
-                        headers,
-                        ..
-                    }) = self.fork(to)
+            fork_height,
+            fork_header,
+            headers,
+            ..
+        }) = self.fork(to)
         {
             Some((fork_height, NonEmpty::from((fork_header, headers))))
         } else {
@@ -724,7 +726,7 @@ impl<S: Store<Header=BlockHeader>> BlockReader for BlockCache<S> {
     }
 
     /// Iterate over the longest chain, starting from genesis.
-    fn iter<'a>(&'a self) -> Box<dyn DoubleEndedIterator<Item=(Height, BlockHeader)> + 'a> {
+    fn iter<'a>(&'a self) -> Box<dyn DoubleEndedIterator<Item = (Height, BlockHeader)> + 'a> {
         Box::new(Iter::new(&self.chain).map(|(i, h)| (i, h.header)))
     }
 
@@ -732,7 +734,7 @@ impl<S: Store<Header=BlockHeader>> BlockReader for BlockCache<S> {
     fn range<'a>(
         &'a self,
         range: std::ops::Range<Height>,
-    ) -> Box<dyn Iterator<Item=(Height, BlockHash)> + 'a> {
+    ) -> Box<dyn Iterator<Item = (Height, BlockHash)> + 'a> {
         Box::new(
             self.chain
                 .iter()

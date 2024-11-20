@@ -26,8 +26,8 @@ use super::filter_cache::FilterCache;
 use super::output::{Io, Outbox};
 use super::{BlockSource, DisconnectReason, Event, Link, PeerId};
 
-use rescan::Rescan;
 use crate::fsm::{DOGECOIN_PROTOCOL_VERSION, PROTOCOL_VERSION};
+use rescan::Rescan;
 
 /// Idle timeout.
 pub const IDLE_TIMEOUT: LocalDuration = LocalDuration::from_secs(60);
@@ -151,8 +151,12 @@ impl<F: Filters, C: Clock> FilterManager<F, C> {
         let rescan = Rescan::new(config.filter_cache_size);
 
         let protocol_version = match network {
-            Network::Mainnet | Network::Testnet | Network::Regtest | Network::Signet => PROTOCOL_VERSION,
-            Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST => DOGECOIN_PROTOCOL_VERSION
+            Network::Mainnet | Network::Testnet | Network::Regtest | Network::Signet => {
+                PROTOCOL_VERSION
+            }
+            Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST => {
+                DOGECOIN_PROTOCOL_VERSION
+            }
         };
         let outbox = Outbox::new(protocol_version);
 
@@ -1025,8 +1029,8 @@ mod tests {
     use super::*;
 
     mod util {
-        use nakamoto_common::params::Params;
         use super::*;
+        use nakamoto_common::params::Params;
 
         pub fn setup<C: Clock>(
             network: Network,
@@ -1060,7 +1064,11 @@ mod tests {
                 ..Config::default()
             };
 
-            (FilterManager::new(config, rng, cache, clock, network), tree, chain)
+            (
+                FilterManager::new(config, rng, cache, clock, network),
+                tree,
+                chain,
+            )
         }
 
         pub fn cfilters<'a>(

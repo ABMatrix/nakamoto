@@ -28,11 +28,11 @@ use nakamoto_common::bitcoin::{Block, BlockHash, Transaction, Txid, Wtxid};
 // TODO: Timeout should be configurable
 // TODO: Add exponential back-off
 
+use crate::fsm::{DOGECOIN_PROTOCOL_VERSION, PROTOCOL_VERSION};
 use nakamoto_common::block::time::{Clock, LocalDuration, LocalTime};
 use nakamoto_common::block::tree::BlockReader;
 use nakamoto_common::collections::{AddressBook, HashMap};
 use nakamoto_common::network::Network;
-use crate::fsm::{DOGECOIN_PROTOCOL_VERSION, PROTOCOL_VERSION};
 
 use super::fees::FeeEstimator;
 use super::output::{Io, Outbox};
@@ -131,8 +131,12 @@ impl<C: Clock> InventoryManager<C> {
     /// Create a new inventory manager.
     pub fn new(rng: fastrand::Rng, clock: C, network: Network) -> Self {
         let protocol_version = match network {
-            Network::Mainnet | Network::Testnet | Network::Regtest | Network::Signet => PROTOCOL_VERSION,
-            Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST => DOGECOIN_PROTOCOL_VERSION
+            Network::Mainnet | Network::Testnet | Network::Regtest | Network::Signet => {
+                PROTOCOL_VERSION
+            }
+            Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST => {
+                DOGECOIN_PROTOCOL_VERSION
+            }
         };
         let outbox = Outbox::new(protocol_version);
 

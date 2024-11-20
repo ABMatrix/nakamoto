@@ -7,10 +7,10 @@ pub mod store;
 pub mod time;
 pub mod tree;
 
+use crate::network::Network;
 pub use bitcoin::blockdata::block::{Block, BlockHeader};
 pub use bitcoin::blockdata::transaction::Transaction;
 pub use bitcoin::hash_types::BlockHash;
-use crate::network::Network;
 
 /// Difficulty target of a block.
 pub type Target = bitcoin::util::uint::Uint256;

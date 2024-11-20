@@ -7,9 +7,8 @@
 //! chains (such as mainnet, testnet).
 //!
 
-
-use bitcoin::util::uint::Uint256;
 use crate::network::Network;
+use bitcoin::util::uint::Uint256;
 
 /// Lowest possible difficulty for Mainnet. See comment on Params::pow_limit for more info.
 const MAX_BITS_BITCOIN: Uint256 = Uint256([
@@ -59,9 +58,8 @@ const DOGE_MAX_DOGEREGTEST: Uint256 = Uint256([
     0x7FFFFFFFFFFFFFFFu64,
     0xFFFFFFFFFFFFFFFFu64,
     0xFFFFFFFFFFFFFFFFu64,
-    0xFFFFFFFFFFFFFFFFu64
+    0xFFFFFFFFFFFFFFFFu64,
 ]);
-
 
 /// Parameters that influence chain consensus.
 #[derive(Debug, Clone)]
@@ -135,7 +133,7 @@ impl Params {
             },
             Network::Signet => Params {
                 network: Network::Signet,
-                bip16_time: 1333238400,                 // Apr 1 2012
+                bip16_time: 1333238400, // Apr 1 2012
                 bip34_height: 1,
                 bip65_height: 1,
                 bip66_height: 1,
@@ -161,7 +159,7 @@ impl Params {
                 allow_min_difficulty_blocks: true,
                 no_pow_retargeting: true,
             },
-            Network::DOGECOINMAINNET => Params{
+            Network::DOGECOINMAINNET => Params {
                 network,
                 bip16_time: 1333238400,
                 bip34_height: 1034383,
@@ -175,7 +173,7 @@ impl Params {
                 allow_min_difficulty_blocks: false,
                 no_pow_retargeting: false,
             },
-            Network::DOGECOINTESTNET => Params{
+            Network::DOGECOINTESTNET => Params {
                 network,
                 bip16_time: 1333238400,
                 bip34_height: 708658,
@@ -189,7 +187,7 @@ impl Params {
                 allow_min_difficulty_blocks: true,
                 no_pow_retargeting: false,
             },
-            Network::DOGECOINREGTEST => Params{
+            Network::DOGECOINREGTEST => Params {
                 network,
                 bip16_time: 1333238400,
                 bip34_height: 100000000,

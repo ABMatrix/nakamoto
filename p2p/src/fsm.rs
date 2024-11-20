@@ -427,8 +427,13 @@ impl Default for Config {
             hooks: Hooks::default(),
             limits: Limits::default(),
         };
-        if [network::Network::DOGECOINMAINNET, network::Network::DOGECOINTESTNET, network::Network::DOGECOINREGTEST]
-            .contains(&conf.network) {
+        if [
+            network::Network::DOGECOINMAINNET,
+            network::Network::DOGECOINTESTNET,
+            network::Network::DOGECOINREGTEST,
+        ]
+        .contains(&conf.network)
+        {
             conf.protocol_version = DOGECOIN_PROTOCOL_VERSION;
         }
         conf
@@ -513,12 +518,16 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> StateMa
             rng.clone(),
             filters,
             clock.clone(),
-            config.network
+            config.network,
         );
 
         let protocol_version = match config.network {
-            Network::Mainnet | Network::Testnet | Network::Regtest | Network::Signet => PROTOCOL_VERSION,
-            Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST => DOGECOIN_PROTOCOL_VERSION
+            Network::Mainnet | Network::Testnet | Network::Regtest | Network::Signet => {
+                PROTOCOL_VERSION
+            }
+            Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST => {
+                DOGECOIN_PROTOCOL_VERSION
+            }
         };
 
         let peermgr = PeerManager::new(
@@ -548,7 +557,7 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> StateMa
             rng.clone(),
             peers,
             clock.clone(),
-            config.network
+            config.network,
         );
         let invmgr = InventoryManager::new(rng, clock.clone(), config.network);
 
@@ -574,14 +583,14 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> StateMa
     }
 
     /// Create a draining iterator over the protocol outputs.
-    pub fn drain(&mut self) -> Box<dyn Iterator<Item=Io> + '_> {
+    pub fn drain(&mut self) -> Box<dyn Iterator<Item = Io> + '_> {
         Box::new(std::iter::from_fn(|| self.next()))
     }
 
     /// Send a message to a all peers matching the predicate.
     fn broadcast<Q>(&mut self, msg: NetworkMessage, predicate: Q) -> Vec<PeerId>
-        where
-            Q: Fn(&Peer) -> bool,
+    where
+        Q: Fn(&Peer) -> bool,
     {
         let mut peers = Vec::new();
 
@@ -596,7 +605,7 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> StateMa
 }
 
 impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> Iterator
-for StateMachine<T, F, P, C>
+    for StateMachine<T, F, P, C>
 {
     type Item = Io;
 
@@ -758,7 +767,7 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> StateMa
 }
 
 impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> traits::StateMachine
-for StateMachine<T, F, P, C>
+    for StateMachine<T, F, P, C>
 {
     type Message = RawNetworkMessage;
     type Event = Event;
@@ -848,7 +857,7 @@ for StateMachine<T, F, P, C>
         self.cbfmgr.timer_expired(&self.tree);
 
         #[cfg(not(test))]
-            let local_time = self.clock.local_time();
+        let local_time = self.clock.local_time();
         #[cfg(not(test))]
         if local_time - self.last_tick >= LocalDuration::from_secs(10) {
             let (tip, _) = self.tree.tip();

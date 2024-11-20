@@ -12,7 +12,7 @@ pub use memory::Memory;
 //pub use db::DB;
 pub use io_seal::File as SealFile;
 
-// /// 
+// ///
 // pub enum StoreAll<H> {
 //     ///
 //     Seal(Result<SealFile<H>, Error>),

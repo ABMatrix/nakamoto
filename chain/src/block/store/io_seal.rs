@@ -68,7 +68,6 @@ impl<H: Decodable> FileReader<H> {
         let size = std::mem::size_of::<H>() + seal::BLOCK_LEN;
 
         if self.queue.is_empty() {
-
             let mut buf = vec![0; size * Self::BATCH_SIZE];
             let from = self.file.seek(io::SeekFrom::Start(self.index))?;
 
@@ -150,24 +149,32 @@ pub struct File<H> {
 
 impl<H> File<H> {
     /// Open a new file store from the given path and genesis header.
-    pub fn open<P: AsRef<Path>>(path: P, genesis: H, seal: Vec<u8>,) -> io::Result<Self> {
+    pub fn open<P: AsRef<Path>>(path: P, genesis: H, seal: Vec<u8>) -> io::Result<Self> {
         fs::OpenOptions::new()
             .create(true)
             .read(true)
             .append(true)
             .open(path)
-            .map(|file| Self { file, genesis, seal })
+            .map(|file| Self {
+                file,
+                genesis,
+                seal,
+            })
     }
 
     /// Create a new file store at the given path, with the provided genesis header.
-    pub fn create<P: AsRef<Path>>(path: P, genesis: H, seal: Vec<u8>,) -> Result<Self, Error> {
+    pub fn create<P: AsRef<Path>>(path: P, genesis: H, seal: Vec<u8>) -> Result<Self, Error> {
         let file = fs::OpenOptions::new()
             .create_new(true)
             .read(true)
             .append(true)
             .open(path)?;
 
-        Ok(Self { file, genesis, seal})
+        Ok(Self {
+            file,
+            genesis,
+            seal,
+        })
     }
 }
 
@@ -215,7 +222,9 @@ impl<H: 'static + Copy + Encodable + Decodable> Store for File<H> {
     fn iter(&self) -> Box<dyn Iterator<Item = Result<(Height, H), Error>>> {
         // Clone so this function doesn't have to take a `&mut self`.
         match self.file.try_clone() {
-            Ok(file) => Box::new(iter::once(Ok((0, self.genesis))).chain(Iter::new(file, self.seal.clone()))),
+            Ok(file) => Box::new(
+                iter::once(Ok((0, self.genesis))).chain(Iter::new(file, self.seal.clone())),
+            ),
             Err(err) => Box::new(iter::once(Err(Error::Io(err)))),
         }
     }
@@ -284,7 +293,7 @@ mod test {
             time: 39123818,
             nonce: 0,
         };
-        let seal = vec![8u8;32];
+        let seal = vec![8u8; 32];
         File::open(tmp.path().join(path), genesis, seal).unwrap()
     }
 

@@ -4,6 +4,7 @@
 #![warn(missing_docs)]
 use std::net;
 
+use crate::fsm::{DOGECOIN_PROTOCOL_VERSION, PROTOCOL_VERSION};
 use nakamoto_common::bitcoin::network::address::Address;
 use nakamoto_common::bitcoin::network::constants::ServiceFlags;
 use nakamoto_common::bitcoin::network::message::NetworkMessage;
@@ -15,7 +16,6 @@ use nakamoto_common::network::Network;
 use nakamoto_common::p2p::peer::{AddressSource, KnownAddress, Source, Store};
 use nakamoto_common::p2p::Domain;
 use nakamoto_net::Disconnect;
-use crate::fsm::{DOGECOIN_PROTOCOL_VERSION, PROTOCOL_VERSION};
 
 use super::output::{Io, Outbox};
 use super::{Event, Link};
@@ -210,7 +210,7 @@ impl<P: Store, C: Clock> AddressManager<P, C> {
     }
 
     /// Return an iterator over randomly sampled addresses.
-    fn iter(&mut self, services: ServiceFlags) -> impl Iterator<Item=(Address, Source)> + '_ {
+    fn iter(&mut self, services: ServiceFlags) -> impl Iterator<Item = (Address, Source)> + '_ {
         Iter(move || self.sample(services))
     }
 
@@ -304,8 +304,12 @@ impl<P: Store, C: Clock> AddressManager<P, C> {
         let ips = peers.iter().map(|(ip, _)| *ip).collect::<Vec<_>>();
 
         let protocol_version = match network {
-            Network::Mainnet | Network::Testnet | Network::Regtest | Network::Signet => PROTOCOL_VERSION,
-            Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST => DOGECOIN_PROTOCOL_VERSION
+            Network::Mainnet | Network::Testnet | Network::Regtest | Network::Signet => {
+                PROTOCOL_VERSION
+            }
+            Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST => {
+                DOGECOIN_PROTOCOL_VERSION
+            }
         };
         let outbox = Outbox::new(protocol_version);
 
@@ -1000,7 +1004,13 @@ mod tests {
 
         let cfg = Config::default();
         let time = LocalTime::now();
-        let mut addrmgr = AddressManager::new(cfg, fastrand::Rng::new(), HashMap::new(), time, Network::Regtest);
+        let mut addrmgr = AddressManager::new(
+            cfg,
+            fastrand::Rng::new(),
+            HashMap::new(),
+            time,
+            Network::Regtest,
+        );
 
         addrmgr.initialize();
         addrmgr.insert(
@@ -1054,8 +1064,13 @@ mod tests {
 
         let cfg = Config::default();
         let clock = RefClock::from(LocalTime::now());
-        let mut addrmgr =
-            AddressManager::new(cfg, fastrand::Rng::new(), HashMap::new(), clock.clone(), Network::Regtest);
+        let mut addrmgr = AddressManager::new(
+            cfg,
+            fastrand::Rng::new(),
+            HashMap::new(),
+            clock.clone(),
+            Network::Regtest,
+        );
 
         addrmgr.initialize();
 
