@@ -98,9 +98,8 @@ where
     fn message_received(&mut self, addr: &net::SocketAddr, bytes: Cow<[u8]>) {
         if let Some(inbox) = self.inboxes.get_mut(addr) {
             inbox.input(bytes.borrow());
-
             loop {
-                match inbox.decode_next() {
+                match inbox.decode_next(self.machine.network()) {
                     Ok(Some(msg)) => self.machine.message_received(addr, Cow::Owned(msg)),
                     Ok(None) => break,
 

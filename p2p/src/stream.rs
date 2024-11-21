@@ -2,6 +2,8 @@
 use std::io;
 
 use nakamoto_common::bitcoin::consensus::{encode, Decodable};
+use nakamoto_common::bitcoin::consensus::encode::Error;
+use nakamoto_common::network::Network;
 
 /// Message stream decoder.
 ///
@@ -25,7 +27,7 @@ impl Decoder {
     }
 
     /// Decode and return the next message. Returns [`None`] if nothing was decoded.
-    pub fn decode_next<D: Decodable>(&mut self) -> Result<Option<D>, encode::Error> {
+    pub fn decode_next<D: Decodable>(&mut self, network: Network) -> Result<Option<D>, encode::Error> {
         match encode::deserialize_partial::<D>(&self.unparsed) {
             Ok((msg, index)) => {
                 // Drain deserialized bytes only.
@@ -36,7 +38,35 @@ impl Decoder {
             Err(encode::Error::Io(ref err)) if err.kind() == io::ErrorKind::UnexpectedEof => {
                 Ok(None)
             }
-            Err(err) => Err(err),
+            Err(err) => {
+                match err {
+                    Error::ParseFailed(msg) => {
+                        if msg.eq("Headers message should not contain transactions") {
+                            match network {
+                                Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST => {
+                                    let unparsed = &self.unparsed[0..80];
+                                    match encode::deserialize_partial::<D>(unparsed) {
+                                        Ok((msg, index)) => {
+                                            // Drain deserialized bytes only.
+                                            self.unparsed.drain(..index);
+                                            Ok(Some(msg))
+                                        }
+
+                                        Err(encode::Error::Io(ref err)) if err.kind() == io::ErrorKind::UnexpectedEof => {
+                                            Ok(None)
+                                        }
+                                        Err(err) => Err(err)
+                                    }
+                                }
+                                _ => Err(err)
+                            }
+                        } else {
+                            Err(err)
+                        }
+                    }
+                    _ => Err(err)
+                }
+            },
         }
     }
 }
@@ -72,7 +102,7 @@ mod test {
         for chunk in bytes.as_slice().chunks(chunk_size) {
             decoder.input(chunk);
 
-            while let Some(msg) = decoder.decode_next::<RawNetworkMessage>().unwrap() {
+            while let Some(msg) = decoder.decode_next::<RawNetworkMessage>(Network::Regtest).unwrap() {
                 msgs.push(msg);
             }
         }

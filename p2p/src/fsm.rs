@@ -602,6 +602,10 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> StateMa
         }
         peers
     }
+
+    pub fn network(&self) -> Network {
+        self.network
+    }
 }
 
 impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> Iterator
