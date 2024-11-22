@@ -17,7 +17,6 @@ use nakamoto_common::bitcoin::util::BitArray;
 use nakamoto_common::bitcoin::Error::{BlockBadProofOfWork, BlockBadTarget};
 
 use nakamoto_common::bitcoin::util::uint::Uint256;
-use nakamoto_common::bitcoin_hashes::Hash;
 use nakamoto_common::block::tree::{self, BlockReader, BlockTree, Branch, Error, ImportResult};
 use nakamoto_common::block::{
     self,

@@ -62,6 +62,7 @@ use thiserror::Error;
 
 /// Peer-to-peer protocol version.
 pub const PROTOCOL_VERSION: u32 = 70016;
+/// DogeCoin Peer-to-peer protocol version.
 pub const DOGECOIN_PROTOCOL_VERSION: u32 = 70015;
 /// Minimum supported peer protocol version.
 /// This version includes support for the `sendheaders` feature.
@@ -413,9 +414,9 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        let mut conf = Self {
-            network: network::Network::default(),
-            params: Params::new(network::Network::default().into()),
+        Self {
+            network: Network::default(),
+            params: Params::new(Network::default()),
             connect: Vec::new(),
             domains: Domain::all(),
             services: ServiceFlags::NONE,
@@ -426,31 +427,28 @@ impl Default for Config {
             user_agent: USER_AGENT,
             hooks: Hooks::default(),
             limits: Limits::default(),
-        };
-        if [
-            network::Network::DOGECOINMAINNET,
-            network::Network::DOGECOINTESTNET,
-            network::Network::DOGECOINREGTEST,
-        ]
-        .contains(&conf.network)
-        {
-            conf.protocol_version = DOGECOIN_PROTOCOL_VERSION;
         }
-        conf
     }
 }
 
 impl Config {
     /// Construct a new configuration.
-    pub fn from(network: network::Network, connect: Vec<net::SocketAddr>) -> Self {
-        let params = Params::new(network.into());
+    pub fn from(network: Network, connect: Vec<net::SocketAddr>) -> Self {
+        let params = Params::new(network);
 
-        Self {
+        let mut config = Self {
             network,
             connect,
             params,
             ..Self::default()
+        };
+        match network {
+            Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST=> {
+                config.protocol_version = DOGECOIN_PROTOCOL_VERSION
+            }
+            _ => {}
         }
+        config
     }
 
     /// Get the listen port.
@@ -508,6 +506,7 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> StateMa
             },
             rng.clone(),
             clock.clone(),
+            protocol_version
         );
         let pingmgr = PingManager::new(ping_timeout, rng.clone(), clock.clone(), config.network);
         let cbfmgr = FilterManager::new(
@@ -520,15 +519,6 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> StateMa
             clock.clone(),
             config.network,
         );
-
-        let protocol_version = match config.network {
-            Network::Mainnet | Network::Testnet | Network::Regtest | Network::Signet => {
-                PROTOCOL_VERSION
-            }
-            Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST => {
-                DOGECOIN_PROTOCOL_VERSION
-            }
-        };
 
         let peermgr = PeerManager::new(
             peermgr::Config {
@@ -603,6 +593,7 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> StateMa
         peers
     }
 
+    /// Get the StateMachine's network
     pub fn network(&self) -> Network {
         self.network
     }

@@ -25,7 +25,7 @@ use nakamoto_common::bitcoin::network::message::NetworkMessage;
 use nakamoto_common::bitcoin::network::Address;
 use nakamoto_common::bitcoin::util::uint::Uint256;
 use nakamoto_common::bitcoin::Txid;
-use nakamoto_common::block::store::{Genesis as _, Store as _};
+use nakamoto_common::block::store::Genesis as _;
 use nakamoto_common::block::time::{AdjustedTime, RefClock};
 use nakamoto_common::block::tree::{self, BlockReader, ImportResult};
 use nakamoto_common::block::{BlockHash, BlockHeader, Height, Transaction};

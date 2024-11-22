@@ -3,7 +3,6 @@ use std::ops::{Deref, DerefMut};
 
 use super::*;
 
-use nakamoto_common::bitcoin::consensus::Params;
 use nakamoto_common::bitcoin::network::message_network::VersionMessage;
 use nakamoto_common::bitcoin::network::Address;
 
@@ -16,6 +15,7 @@ use nakamoto_common::block::BlockHeader;
 use nakamoto_common::collections::{HashMap, HashSet};
 use nakamoto_common::nonempty::NonEmpty;
 use nakamoto_common::p2p::peer::KnownAddress;
+use nakamoto_common::params::Params;
 
 use nakamoto_net::simulator;
 use nakamoto_test::block::cache::model;
@@ -127,7 +127,7 @@ impl Peer<Protocol> {
         peers: Vec<(net::SocketAddr, Source, ServiceFlags)>,
         rng: fastrand::Rng,
     ) -> Self {
-        let cfg = Config {
+        let mut cfg = Config {
             network,
             params: Params::new(network.into()),
             // We don't actually have the required services, but we pretend to
@@ -135,6 +135,14 @@ impl Peer<Protocol> {
             services: syncmgr::REQUIRED_SERVICES | cbfmgr::REQUIRED_SERVICES,
             ..Config::default()
         };
+
+        match network {
+            Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST => {
+                cfg.protocol_version = DOGECOIN_PROTOCOL_VERSION
+            }
+            _ => {}
+        }
+
         Self::config(name, ip, headers, cfheaders, peers, cfg, rng)
     }
 
@@ -369,7 +377,7 @@ pub fn network(network: Network, size: usize, rng: fastrand::Rng) -> Vec<Peer<Pr
         .enumerate()
         .map(|(i, (addr, _, _))| {
             let peers = address_books.get(addr).unwrap_or(&Vec::new()).clone();
-            let cfg = Config {
+            let mut cfg = Config {
                 network,
                 // These nodes don't need to try connecting to other nodes.
                 limits: Limits {
@@ -380,6 +388,14 @@ pub fn network(network: Network, size: usize, rng: fastrand::Rng) -> Vec<Peer<Pr
                 services: syncmgr::REQUIRED_SERVICES | cbfmgr::REQUIRED_SERVICES,
                 ..Config::default()
             };
+
+            match network {
+                Network::DOGECOINMAINNET | Network::DOGECOINTESTNET |   Network::DOGECOINREGTEST=> {
+                    cfg.protocol_version = DOGECOIN_PROTOCOL_VERSION
+                }
+                _ => {}
+            }
+
             Peer::config(names[i], addr.ip(), vec![], vec![], peers, cfg, rng.clone())
         })
         .collect::<Vec<_>>()

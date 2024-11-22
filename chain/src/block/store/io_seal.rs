@@ -25,7 +25,7 @@ fn put<H: Sized + Encodable, S: Seek + Write, I: Iterator<Item = H>>(
         let sered = serialize(&header);
         let sealed = seal::sealing(sered, sk.clone()).unwrap();
         let writelen = stream.write(&sealed)? as u64;
-        pos = pos + writelen;
+        pos += writelen;
     }
 
     Ok(pos / size as u64)
