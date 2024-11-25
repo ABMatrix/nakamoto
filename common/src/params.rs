@@ -82,6 +82,8 @@ pub struct Params {
     pub allow_min_difficulty_blocks: bool,
     /// Determines whether retargeting is disabled for this network or not.
     pub no_pow_retargeting: bool,
+    /// AuxPoW parameters
+    pub strict_chain_id: Option<bool>
 }
 
 impl Params {
@@ -101,6 +103,7 @@ impl Params {
                 pow_target_timespan: 14 * 24 * 60 * 60, // 2 weeks.
                 allow_min_difficulty_blocks: false,
                 no_pow_retargeting: false,
+                strict_chain_id: None,
             },
             Network::Testnet => Params {
                 network: Network::Testnet,
@@ -115,6 +118,7 @@ impl Params {
                 pow_target_timespan: 14 * 24 * 60 * 60, // 2 weeks.
                 allow_min_difficulty_blocks: true,
                 no_pow_retargeting: false,
+                strict_chain_id: None,
             },
             Network::Signet => Params {
                 network: Network::Signet,
@@ -129,6 +133,7 @@ impl Params {
                 pow_target_timespan: 14 * 24 * 60 * 60, // 2 weeks.
                 allow_min_difficulty_blocks: false,
                 no_pow_retargeting: false,
+                strict_chain_id: None,
             },
             Network::Regtest => Params {
                 network: Network::Regtest,
@@ -143,6 +148,7 @@ impl Params {
                 pow_target_timespan: 14 * 24 * 60 * 60, // 2 weeks.
                 allow_min_difficulty_blocks: true,
                 no_pow_retargeting: true,
+                strict_chain_id: None,
             },
             Network::DOGECOINMAINNET => Params {
                 network,
@@ -157,6 +163,7 @@ impl Params {
                 pow_target_timespan: 4 * 60 * 60,
                 allow_min_difficulty_blocks: false,
                 no_pow_retargeting: false,
+                strict_chain_id: Some(true),
             },
             Network::DOGECOINTESTNET => Params {
                 network,
@@ -171,6 +178,7 @@ impl Params {
                 pow_target_timespan: 4 * 60 * 60,
                 allow_min_difficulty_blocks: true,
                 no_pow_retargeting: false,
+                strict_chain_id: Some(false),
             },
             Network::DOGECOINREGTEST => Params {
                 network,
@@ -185,6 +193,7 @@ impl Params {
                 pow_target_timespan: 4 * 60 * 60,
                 allow_min_difficulty_blocks: true,
                 no_pow_retargeting: true,
+                strict_chain_id: Some(true),
             },
         }
     }
