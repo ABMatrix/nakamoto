@@ -257,6 +257,7 @@ pub mod test {
     use nakamoto_common::bitcoin::network::message::NetworkMessage;
 
     pub mod raw {
+        use nakamoto_common::message::inner::InnerNetWorkMessage;
         use super::*;
 
         pub fn messages_from(
@@ -266,7 +267,7 @@ pub mod test {
             let addr = *addr;
 
             outbox.filter_map(move |o| match o {
-                fsm::Io::Write(a, msg) if a == addr => Some(msg.payload),
+                fsm::Io::Write(a, msg) if a == addr => Some(msg.payload().into()),
                 _ => None,
             })
         }
@@ -275,7 +276,7 @@ pub mod test {
             outbox: impl Iterator<Item = fsm::Io>,
         ) -> impl Iterator<Item = (net::SocketAddr, NetworkMessage)> {
             outbox.filter_map(move |o| match o {
-                fsm::Io::Write(a, msg) => Some((a, msg.payload)),
+                fsm::Io::Write(a, msg) => Some((a, msg.payload().into())),
                 _ => None,
             })
         }

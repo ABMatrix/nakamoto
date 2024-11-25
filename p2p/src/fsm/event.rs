@@ -8,6 +8,7 @@ use nakamoto_common::bitcoin::network::message::NetworkMessage;
 use nakamoto_common::bitcoin::{Transaction, Txid};
 use nakamoto_common::block::filter::BlockFilter;
 use nakamoto_common::block::{Block, BlockHash, BlockHeader, Height};
+use nakamoto_common::message::inner::InnerNetWorkMessage;
 use nakamoto_common::nonempty::NonEmpty;
 use nakamoto_common::p2p::peer::Source;
 use nakamoto_net::Disconnect;
@@ -233,7 +234,7 @@ pub enum Event {
         /// Peer that sent the message.
         from: PeerId,
         /// Message payload.
-        message: Arc<NetworkMessage>,
+        message: Arc<InnerNetWorkMessage>,
     },
     /// Address book exhausted.
     AddressBookExhausted,

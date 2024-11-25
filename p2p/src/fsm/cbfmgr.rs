@@ -18,6 +18,7 @@ use nakamoto_common::block::time::{Clock, LocalDuration, LocalTime};
 use nakamoto_common::block::tree::BlockReader;
 use nakamoto_common::block::{BlockHash, Height};
 use nakamoto_common::collections::{AddressBook, HashMap};
+use nakamoto_common::message::inner::InnerNetWorkMessage;
 use nakamoto_common::network::Network;
 use nakamoto_common::source;
 
@@ -248,80 +249,86 @@ impl<F: Filters, C: Clock> FilterManager<F, C> {
                 }
                 _ => {}
             },
-            Event::MessageReceived { from, message } => match message.as_ref() {
-                NetworkMessage::CFHeaders(msg) => {
-                    log::debug!(
+            Event::MessageReceived { from, message } => {
+                let message = match message.as_ref() {
+                    InnerNetWorkMessage::BTC(msg) => msg,
+                    InnerNetWorkMessage::DOGE(msg) => &msg.into(),
+                };
+                match message {
+                    NetworkMessage::CFHeaders(msg) => {
+                        log::debug!(
                         target: "p2p",
                         "Received {} filter header(s) from {}",
                         msg.filter_hashes.len(),
                         from
                     );
 
-                    match self.received_cfheaders(&from, msg.clone(), tree) {
-                        Ok(_) => {}
-                        Err(Error::InvalidMessage { from, .. }) => {
-                            self.outbox.event(Event::PeerMisbehaved {
-                                addr: from,
-                                reason: "invalid `cfheaders` message",
-                            });
-                        }
-                        Err(e @ Error::Filters { .. }) => {
-                            self.outbox.error(e);
-                        }
-                        Err(e @ Error::Ignored { .. }) => {
-                            log::warn!(target: "p2p", "Dropped `cfheaders` message: {e}");
-                        }
-                    }
-                }
-                NetworkMessage::GetCFHeaders(msg) => {
-                    match self.received_getcfheaders(&from, msg.clone(), tree) {
-                        Ok(_) => {}
-                        Err(Error::InvalidMessage { from, .. }) => {
-                            self.outbox.event(Event::PeerMisbehaved {
-                                addr: from,
-                                reason: "invalid `getcfheaders` message",
-                            });
-                        }
-                        Err(e @ Error::Filters { .. }) => {
-                            self.outbox.error(e);
-                        }
-                        Err(e @ Error::Ignored { .. }) => {
-                            log::warn!(target: "p2p", "Dropped `getcfheaders` message: {e}");
-                        }
-                    }
-                }
-                NetworkMessage::CFilter(msg) => {
-                    match self.received_cfilter(&from, msg.clone(), tree) {
-                        Ok(matches) => {
-                            for (height, hash) in matches {
-                                if self.pending_blocks.insert(height) {
-                                    blocks.get_block(hash);
-                                }
-                            }
-                            // Filters being processed only updates our progress if there are no
-                            // pending blocks. Otherwise we have to wait for the block to arrive.
-                            if self.pending_blocks.is_empty() {
-                                self.outbox.event(Event::Scanned {
-                                    height: self.rescan.current,
+                        match self.received_cfheaders(&from, msg.clone(), tree) {
+                            Ok(_) => {}
+                            Err(Error::InvalidMessage { from, .. }) => {
+                                self.outbox.event(Event::PeerMisbehaved {
+                                    addr: from,
+                                    reason: "invalid `cfheaders` message",
                                 });
                             }
-                        }
-                        Err(Error::InvalidMessage { from, .. }) => {
-                            self.outbox.event(Event::PeerMisbehaved {
-                                addr: from,
-                                reason: "invalid `cfilter` message",
-                            });
-                        }
-                        Err(e @ Error::Filters { .. }) => {
-                            self.outbox.error(e);
-                        }
-                        Err(e @ Error::Ignored { .. }) => {
-                            log::warn!(target: "p2p", "Dropped `cfilter` message: {e}");
+                            Err(e @ Error::Filters { .. }) => {
+                                self.outbox.error(e);
+                            }
+                            Err(e @ Error::Ignored { .. }) => {
+                                log::warn!(target: "p2p", "Dropped `cfheaders` message: {e}");
+                            }
                         }
                     }
+                    NetworkMessage::GetCFHeaders(msg) => {
+                        match self.received_getcfheaders(&from, msg.clone(), tree) {
+                            Ok(_) => {}
+                            Err(Error::InvalidMessage { from, .. }) => {
+                                self.outbox.event(Event::PeerMisbehaved {
+                                    addr: from,
+                                    reason: "invalid `getcfheaders` message",
+                                });
+                            }
+                            Err(e @ Error::Filters { .. }) => {
+                                self.outbox.error(e);
+                            }
+                            Err(e @ Error::Ignored { .. }) => {
+                                log::warn!(target: "p2p", "Dropped `getcfheaders` message: {e}");
+                            }
+                        }
+                    }
+                    NetworkMessage::CFilter(msg) => {
+                        match self.received_cfilter(&from, msg.clone(), tree) {
+                            Ok(matches) => {
+                                for (height, hash) in matches {
+                                    if self.pending_blocks.insert(height) {
+                                        blocks.get_block(hash);
+                                    }
+                                }
+                                // Filters being processed only updates our progress if there are no
+                                // pending blocks. Otherwise we have to wait for the block to arrive.
+                                if self.pending_blocks.is_empty() {
+                                    self.outbox.event(Event::Scanned {
+                                        height: self.rescan.current,
+                                    });
+                                }
+                            }
+                            Err(Error::InvalidMessage { from, .. }) => {
+                                self.outbox.event(Event::PeerMisbehaved {
+                                    addr: from,
+                                    reason: "invalid `cfilter` message",
+                                });
+                            }
+                            Err(e @ Error::Filters { .. }) => {
+                                self.outbox.error(e);
+                            }
+                            Err(e @ Error::Ignored { .. }) => {
+                                log::warn!(target: "p2p", "Dropped `cfilter` message: {e}");
+                            }
+                        }
+                    }
+                    _ => {}
                 }
-                _ => {}
-            },
+            }
             _ => {}
         }
     }

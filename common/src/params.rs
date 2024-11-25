@@ -194,3 +194,6 @@ impl Params {
         self.pow_target_timespan / self.pow_target_spacing
     }
 }
+
+/// VERSION_AUXPOW
+pub const VERSION_FLAG_AUXPOW: i32 = 1 << 8;

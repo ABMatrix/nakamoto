@@ -13,6 +13,7 @@ use nakamoto_common::block::store::Genesis;
 use nakamoto_common::block::time::{Clock, RefClock};
 use nakamoto_common::block::BlockHeader;
 use nakamoto_common::collections::{HashMap, HashSet};
+use nakamoto_common::message::inner::InnerNetWorkMessage;
 use nakamoto_common::nonempty::NonEmpty;
 use nakamoto_common::p2p::peer::KnownAddress;
 use nakamoto_common::params::Params;

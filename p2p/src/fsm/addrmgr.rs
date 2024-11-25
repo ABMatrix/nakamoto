@@ -12,6 +12,7 @@ use nakamoto_common::block::time::Clock;
 use nakamoto_common::block::time::{LocalDuration, LocalTime};
 use nakamoto_common::block::BlockTime;
 use nakamoto_common::collections::{HashMap, HashSet};
+use nakamoto_common::message::inner::InnerNetWorkMessage;
 use nakamoto_common::network::Network;
 use nakamoto_common::p2p::peer::{AddressSource, KnownAddress, Source, Store};
 use nakamoto_common::p2p::Domain;
@@ -151,16 +152,20 @@ impl<P: Store, C: Clock> AddressManager<P, C> {
                 if let Some(ka) = self.peers.get_mut(&from.ip()) {
                     ka.last_active = Some(self.clock.local_time());
                 }
-                match message.as_ref() {
-                    NetworkMessage::Addr(addrs) => {
-                        self.received_addr(from, addrs.clone());
-                        // TODO: Tick the peer manager, because we may have new addresses to connect to.
-                        // TODO: Can do this via `Event::AddressesImported`.
-                    }
-                    NetworkMessage::GetAddr => {
-                        self.received_getaddr(&from);
-                    }
-                    _ => {}
+                let message = match message.as_ref() {
+                    InnerNetWorkMessage::BTC(msg) => msg,
+                    InnerNetWorkMessage::DOGE(msg) => &msg.into()
+                };
+                match message {
+                        NetworkMessage::Addr(addrs) => {
+                            self.received_addr(from, addrs.clone());
+                            // TODO: Tick the peer manager, because we may have new addresses to connect to.
+                            // TODO: Can do this via `Event::AddressesImported`.
+                        }
+                        NetworkMessage::GetAddr => {
+                            self.received_getaddr(&from);
+                        }
+                        _ => {}
                 }
             }
             _ => {}

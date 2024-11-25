@@ -26,8 +26,6 @@
 #![deny(missing_docs, unsafe_code)]
 pub mod fsm;
 pub mod stream;
-/// Dealing with DogeCoin's RawNetworkMessage
-pub mod dogecoin_message;
 
 pub use fsm::{Command, Config, DisconnectReason, Event, Io, Link, PeerId, StateMachine};
 pub use nakamoto_net as net;

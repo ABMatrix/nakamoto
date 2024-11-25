@@ -14,8 +14,9 @@ use crate::client::Config;
 use crate::peer;
 use nakamoto_common::block::filter;
 use nakamoto_common::block::filter::Filters;
+use nakamoto_common::message::dogecoin_message::DogeCoinRawNetworkMessage;
+use nakamoto_common::message::inner::InnerRawNetWorkMessage;
 use nakamoto_common::network::Network;
-use nakamoto_p2p::dogecoin_message::DogeCoinRawNetworkMessage;
 use nakamoto_p2p::fsm::DOGECOIN_PROTOCOL_VERSION;
 
 /// Client service. Wraps a state machine and handles decoding and encoding of network messages.
@@ -113,7 +114,7 @@ impl<T, F, P, C> StateMachine for Service<T, F, P, C>
                 Network::Mainnet | Network::Testnet | Network::Regtest | Network::Signet=> {
                     loop {
                         match inbox.decode_next() {
-                            Ok(Some(msg)) => self.machine.message_received(addr, Cow::Owned(msg)),
+                            Ok(Some(msg)) => self.machine.message_received(addr, Cow::Owned(InnerRawNetWorkMessage::BTC(msg))),
                             Ok(None) => break,
 
                             Err(err) => {
@@ -130,7 +131,7 @@ impl<T, F, P, C> StateMachine for Service<T, F, P, C>
                 Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST=> {
                     loop {
                         match inbox.decode_next::<DogeCoinRawNetworkMessage>() {
-                            Ok(Some(msg)) => self.machine.message_received(addr, Cow::Owned(msg.into())),
+                            Ok(Some(msg)) => self.machine.message_received(addr, Cow::Owned(InnerRawNetWorkMessage::DOGE(msg))),
                             Ok(None) => break,
 
                             Err(err) => {

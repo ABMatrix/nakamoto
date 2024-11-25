@@ -10,6 +10,7 @@ use std::net;
 use nakamoto_common::bitcoin::network::message::NetworkMessage;
 use nakamoto_common::block::time::{Clock, LocalDuration, LocalTime};
 use nakamoto_common::collections::HashMap;
+use nakamoto_common::message::inner::InnerNetWorkMessage;
 use nakamoto_common::network::Network;
 
 use crate::fsm::{PeerId, DOGECOIN_PROTOCOL_VERSION, PROTOCOL_VERSION};
@@ -112,14 +113,20 @@ impl<C: Clock> PingManager<C> {
             Event::PeerDisconnected { addr, .. } => {
                 self.peers.remove(&addr);
             }
-            Event::MessageReceived { from, message } => match message.as_ref() {
-                NetworkMessage::Ping(nonce) => {
-                    self.received_ping(from, *nonce);
+            Event::MessageReceived { from, message } => {
+                let message = match message.as_ref() {
+                    InnerNetWorkMessage::BTC(msg) => msg,
+                    InnerNetWorkMessage::DOGE(msg) => &msg.into()
+                };
+                match message {
+                    NetworkMessage::Ping(nonce) => {
+                        self.received_ping(from, *nonce);
+                    }
+                    NetworkMessage::Pong(nonce) => {
+                        self.received_pong(from, *nonce);
+                    }
+                    _ => {}
                 }
-                NetworkMessage::Pong(nonce) => {
-                    self.received_pong(from, *nonce);
-                }
-                _ => {}
             },
             _ => {}
         }

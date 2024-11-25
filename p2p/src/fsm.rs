@@ -74,7 +74,7 @@ pub const USER_AGENT: &str = "/nakamoto:0.3.0/";
 type Locators = (Vec<BlockHash>, BlockHash);
 
 /// Output of a state transition.
-pub type Io = nakamoto_net::Io<RawNetworkMessage, Event, DisconnectReason>;
+pub type Io = nakamoto_net::Io<InnerRawNetWorkMessage, Event, DisconnectReason>;
 
 /// Identifies a peer.
 pub type PeerId = net::SocketAddr;
@@ -293,6 +293,7 @@ pub enum CommandError {
 }
 
 pub use cbfmgr::GetFiltersError;
+use nakamoto_common::message::inner::{InnerNetWorkMessage, InnerRawNetWorkMessage};
 use nakamoto_common::network::Network;
 use nakamoto_common::params::Params;
 
@@ -302,7 +303,7 @@ pub struct Hooks {
     /// Called when we receive a message from a peer.
     /// If an error is returned, the message is not further processed.
     pub on_message:
-        Arc<dyn Fn(PeerId, &NetworkMessage, &Outbox) -> Result<(), &'static str> + Send + Sync>,
+        Arc<dyn Fn(PeerId, &InnerNetWorkMessage, &Outbox) -> Result<(), &'static str> + Send + Sync>,
     /// Called when a `version` message is received.
     /// If an error is returned, the peer is dropped, and the error is logged.
     pub on_version: Arc<dyn Fn(PeerId, &VersionMessage) -> Result<(), &'static str> + Send + Sync>,
@@ -692,6 +693,7 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> StateMa
                 reply.send(peers).ok();
             }
             Command::ImportHeaders(headers, reply) => {
+                println!("{:?}", headers);
                 let result = self
                     .syncmgr
                     .import_blocks(headers.into_iter(), &mut self.tree);
@@ -764,7 +766,7 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> StateMa
 impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> traits::StateMachine
     for StateMachine<T, F, P, C>
 {
-    type Message = RawNetworkMessage;
+    type Message = InnerRawNetWorkMessage;
     type Event = Event;
     type DisconnectReason = DisconnectReason;
 
@@ -782,15 +784,15 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> traits:
         });
     }
 
-    fn message_received(&mut self, addr: &net::SocketAddr, msg: Cow<RawNetworkMessage>) {
+    fn message_received(&mut self, addr: &net::SocketAddr, msg: Cow<InnerRawNetWorkMessage>) {
         let cmd = msg.cmd();
         let addr = *addr;
         let msg = msg.into_owned();
 
-        if msg.magic != self.network.magic() {
+        if msg.magic() != self.network.magic() {
             return self
                 .peermgr
-                .disconnect(addr, DisconnectReason::PeerMagic(msg.magic));
+                .disconnect(addr, DisconnectReason::PeerMagic(msg.magic()));
         }
 
         if !self.peermgr.is_connected(&addr) {
@@ -800,7 +802,7 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> traits:
 
         debug!(target: "p2p", "Received {:?} from {}", cmd, addr);
 
-        if let Err(err) = (self.hooks.on_message)(addr, &msg.payload, &self.outbox) {
+        if let Err(err) = (self.hooks.on_message)(addr, &msg.payload(), &self.outbox) {
             debug!(
                 target: "p2p",
                 "Message {:?} from {} dropped by user hook: {}",
@@ -813,7 +815,7 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> traits:
         // push it to our outbox.
         self.event(Event::MessageReceived {
             from: addr,
-            message: Arc::new(msg.payload),
+            message: Arc::new(msg.payload()),
         });
     }
 

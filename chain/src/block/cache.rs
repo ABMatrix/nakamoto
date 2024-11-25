@@ -12,11 +12,14 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::ops::ControlFlow;
 
 use nakamoto_common::bitcoin::blockdata::block::BlockHeader;
+use nakamoto_common::bitcoin::consensus::serialize;
 use nakamoto_common::bitcoin::hash_types::BlockHash;
 use nakamoto_common::bitcoin::util::BitArray;
 use nakamoto_common::bitcoin::Error::{BlockBadProofOfWork, BlockBadTarget};
+use nakamoto_common::bitcoin::util;
 
 use nakamoto_common::bitcoin::util::uint::Uint256;
+use nakamoto_common::bitcoin_hashes::{Hash, sha256};
 use nakamoto_common::block::tree::{self, BlockReader, BlockTree, Branch, Error, ImportResult};
 use nakamoto_common::block::{
     self,
@@ -27,7 +30,8 @@ use nakamoto_common::block::{
 };
 use nakamoto_common::network::Network;
 use nakamoto_common::nonempty::NonEmpty;
-use nakamoto_common::params::Params;
+use nakamoto_common::params::{Params, VERSION_FLAG_AUXPOW};
+use nakamoto_common::scrypt;
 
 /// A block that is being stored by the block cache.
 #[derive(Debug, Clone, Copy)]
@@ -447,6 +451,37 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
         Ok(())
     }
 
+    fn check_doge_proof_of_work(header: &BlockHeader, required_target: &Uint256) -> Result<(), util::Error> {
+        let target = &header.target();
+        if target != required_target {
+            return Err(BlockBadTarget);
+        }
+        let header_data = serialize(header);
+        let mut pow_hash_buf = [0u8; 32];
+        let params = scrypt::Params::new(10, 1, 1, 32).unwrap();
+        scrypt::scrypt(&header_data, &header_data, &params, &mut pow_hash_buf).unwrap();
+        let pow_hash = sha256::Hash::from_slice(&pow_hash_buf).unwrap();
+        let mut ret = [0u64; 4];
+        util::endian::bytes_to_u64_slice_le(pow_hash.as_inner(), &mut ret);
+        let hash = &Uint256(ret);
+        if hash <= target { Ok(()) } else { Err(BlockBadProofOfWork) }
+    }
+
+    fn validate_doge(
+        &self,
+        header: &BlockHeader,
+        required_target: &Uint256
+    ) -> Result<(), util::Error>
+    {
+        // has auxpow
+        if (header.version & VERSION_FLAG_AUXPOW) != 0 {
+            let (_, parent_block_header) = self.get_block(&header.prev_blockhash).ok_or_else(||BlockBadProofOfWork)?;
+            Self::check_doge_proof_of_work(parent_block_header, &required_target)
+        }else {
+            Self::check_doge_proof_of_work(header, &required_target)
+        }
+    }
+
     /// Validate a block header as a potential new tip. This performs full header validation.
     fn validate(
         &self,
@@ -486,7 +521,18 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
                     Ok(_) => {}
                 }
             }
-            _ => {}
+            Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST => {
+                match self.validate_doge(&header,&target) {
+                    Err(BlockBadProofOfWork) => {
+                        return Err(Error::InvalidBlockPoW);
+                    }
+                    Err(BlockBadTarget) => {
+                        return Err(Error::InvalidBlockTarget(header.target(), target));
+                    }
+                    Err(_) => unreachable!(),
+                    Ok(_) => {}
+                }
+            }
         }
 
         // Validate against block checkpoints.

@@ -28,6 +28,7 @@ use nakamoto_common::p2p::Domain;
 use nakamoto_common::block::time::{AdjustedClock, Clock, LocalDuration, LocalTime};
 use nakamoto_common::block::Height;
 use nakamoto_common::collections::{HashMap, HashSet};
+use nakamoto_common::message::inner::InnerNetWorkMessage;
 use nakamoto_net as network;
 
 use crate::fsm::addrmgr;
@@ -237,22 +238,28 @@ impl<C: AdjustedClock<PeerId>> PeerManager<C> {
             Event::PeerMisbehaved { addr, reason } => {
                 self.disconnect(addr, DisconnectReason::PeerMisbehaving(reason));
             }
-            Event::MessageReceived { from, message } => match message.as_ref() {
-                NetworkMessage::Version(msg) => {
-                    self.received_version(&from, msg, tree.height());
+            Event::MessageReceived { from, message } => {
+                let message = match message.as_ref() {
+                    InnerNetWorkMessage::BTC(msg) => msg,
+                    InnerNetWorkMessage::DOGE(msg) => &msg.into()
+                };
+                match message {
+                    NetworkMessage::Version(msg) => {
+                        self.received_version(&from, msg, tree.height());
+                    }
+                    NetworkMessage::Verack => {
+                        self.received_verack(&from);
+                    }
+                    NetworkMessage::WtxidRelay => {
+                        self.received_wtxidrelay(&from);
+                    }
+                    NetworkMessage::Unknown {
+                        command: ref cmd, ..
+                    } => {
+                        log::warn!(target: "p2p", "Ignoring unknown message {:?} from {}", cmd, from)
+                    }
+                    _ => {}
                 }
-                NetworkMessage::Verack => {
-                    self.received_verack(&from);
-                }
-                NetworkMessage::WtxidRelay => {
-                    self.received_wtxidrelay(&from);
-                }
-                NetworkMessage::Unknown {
-                    command: ref cmd, ..
-                } => {
-                    log::warn!(target: "p2p", "Ignoring unknown message {:?} from {}", cmd, from)
-                }
-                _ => {}
             },
             _ => {}
         }

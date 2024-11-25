@@ -292,6 +292,7 @@ impl<C: Clock> SyncManager<C> {
 
             return;
         }
+        println!("headers {:?}", headers);
         // When unsolicited, we don't want to process too many headers in case of a DoS.
         if length > MAX_UNSOLICITED_HEADERS && request.is_none() {
             log::debug!("Received {} unsolicited headers from {}", length, from);

@@ -32,6 +32,7 @@ use crate::fsm::{DOGECOIN_PROTOCOL_VERSION, PROTOCOL_VERSION};
 use nakamoto_common::block::time::{Clock, LocalDuration, LocalTime};
 use nakamoto_common::block::tree::BlockReader;
 use nakamoto_common::collections::{AddressBook, HashMap};
+use nakamoto_common::message::inner::InnerNetWorkMessage;
 use nakamoto_common::network::Network;
 
 use super::fees::FeeEstimator;
@@ -187,15 +188,21 @@ impl<C: Clock> InventoryManager<C> {
                     self.block_reverted(height);
                 }
             }
-            Event::MessageReceived { from, message } => match message.as_ref() {
-                NetworkMessage::Block(block) => {
-                    self.received_block(&from, block.clone(), tree);
+            Event::MessageReceived { from, message } => {
+                let message = match message.as_ref() {
+                    InnerNetWorkMessage::BTC(msg) => msg,
+                    InnerNetWorkMessage::DOGE(msg) => &msg.into()
+                };
+                match message {
+                    NetworkMessage::Block(block) => {
+                        self.received_block(&from, block.clone(), tree);
+                    }
+                    NetworkMessage::GetData(invs) => {
+                        self.received_getdata(from, invs);
+                        // TODO: (*self.hooks.on_getdata)(addr, invs, &self.outbox);
+                    }
+                    _ => {}
                 }
-                NetworkMessage::GetData(invs) => {
-                    self.received_getdata(from, invs);
-                    // TODO: (*self.hooks.on_getdata)(addr, invs, &self.outbox);
-                }
-                _ => {}
             },
             _ => {}
         }
