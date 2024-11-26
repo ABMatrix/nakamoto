@@ -215,7 +215,7 @@ impl Params {
         match self.network {
             Network::DOGECOINMAINNET | Network::DOGECOINTESTNET=> {
                 if height<= 144999 {
-                    true
+                    false
                 }else {
                     true
                 }
