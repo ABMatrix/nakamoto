@@ -25,3 +25,4 @@ nakamoto-net = { version = "0.4.0", path = "../net", features = ["quickcheck"] }
 tempfile = "3"
 quickcheck = { version = "1", default_features = false }
 quickcheck_macros = "1"
+hex = "0.4.3"

@@ -46,12 +46,21 @@ impl Decodable for DogeCoinRawNetworkMessage {
                 for aux_header in aux_headers {
                     if aux_header.aux.is_none() {
                         // validate pow
-                        aux_header.validate_pow().map_err(|_|encode::Error::ParseFailed("validate_pow failed"))?;
+                        // aux_header.validate_pow().map_err(|_|encode::Error::ParseFailed("validate_pow failed"))?;
+                        if let Err(e) = aux_header.validate_pow() {
+                            println!("validate_pow failed {e} {}", aux_header.block_header.block_hash())
+                        }
                         headers.push(aux_header.block_header)
                     } else {
                         // validate aux and pow
-                        aux_header.check_aux(&params).map_err(|_|encode::Error::ParseFailed("check_aux failed"))?;
-                        aux_header.validate_pow().map_err(|_|encode::Error::ParseFailed("validate_pow failed"))?;
+                        // aux_header.check_aux(&params).map_err(|_|encode::Error::ParseFailed("check_aux failed"))?;
+                       if let Err(e) =  aux_header.check_aux(&params) {
+                           println!("check_aux failed {e} {}", aux_header.block_header.block_hash())
+                       };
+                        // aux_header.validate_pow().map_err(|_|encode::Error::ParseFailed("validate_pow failed"))?;
+                        if let Err(e) = aux_header.validate_pow() {
+                            println!("validate_pow failed {e} {}", aux_header.block_header.block_hash())
+                        }
                         headers.push(aux_header.block_header)
                     }
                 }
@@ -294,7 +303,7 @@ impl BlockHeaderAuxPow {
         scrypt::scrypt(&header_buf, &header_buf, &params, &mut pow_hash_buf).unwrap();
         let pow_hash = sha256d::Hash::from_slice(&pow_hash_buf).unwrap();
         let mut ret = [0u64; 4];
-        util::endian::bytes_to_u64_slice_le(pow_hash.as_inner(), &mut ret);
+        Self::bytes_to_u64_slice_le(pow_hash.as_inner(), &mut ret);
         let hash = Uint256(ret);
 
         if hash <= self.block_header.target() { Ok(()) } else { Err(util::Error::BlockBadProofOfWork) }
@@ -306,7 +315,7 @@ impl BlockHeaderAuxPow {
         let parent_chain_id = aux.parent_block_header.version >> 16;
 
         if (aux.n_index != 0)
-            || (params.strict_chain_id.unwrap() && parent_chain_id == chain_id)
+            || (params.doge_strict_chain_id() && parent_chain_id == chain_id)
             || aux.blockchain_merkle_branch_hashes.len() > 30
         {
             return Err(util::Error::BlockBadProofOfWork);
@@ -418,12 +427,27 @@ impl BlockHeaderAuxPow {
         }
         block_hash
     }
+
+    fn bytes_to_u64_slice_le(input: &[u8], output: &mut [u64]) {
+        assert!(input.len() >= output.len() * 8, "Input data is too short");
+
+        for (i, chunk) in input.chunks(8).enumerate().take(output.len()) {
+            output[i] = u64::from_le_bytes(chunk.try_into().expect("Chunk size must be 8 bytes"));
+        }
+    }
+
 }
 
 #[cfg(test)]
 mod test {
+    use std::str::FromStr;
+    use nakamoto_chain::BlockHeader;
     use nakamoto_common::bitcoin::consensus::encode;
-    use nakamoto_common::bitcoin_hashes::hex::FromHex;
+    use nakamoto_common::bitcoin::util;
+    use nakamoto_common::bitcoin::util::BitArray;
+    use nakamoto_common::bitcoin::util::uint::Uint256;
+    use nakamoto_common::bitcoin_hashes::hex::{FromHex, ToHex};
+    use nakamoto_common::bitcoin_hashes::{Hash, sha256d};
     use nakamoto_common::network::Network;
     use crate::dogecoin_message::BlockHeaderAuxPow;
 
@@ -446,5 +470,16 @@ mod test {
             assert!(aux_header.check_aux(&params).is_ok());
         }
         assert!(no_aux_header.validate_pow().is_ok());
+    }
+
+    #[test]
+    fn test_doge_pow_limit() {
+        let bytes = hex::decode("00000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff").unwrap();
+        let mut ret = [0u64; 4];
+        util::endian::bytes_to_u64_slice_le(&bytes, &mut ret);
+        let u = &Uint256(ret);
+        for i in u.0 {
+            println!("{}", i.to_hex())
+        }
     }
 }

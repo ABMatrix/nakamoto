@@ -9,6 +9,7 @@
 
 use crate::network::Network;
 use bitcoin::util::uint::Uint256;
+use crate::block::Height;
 
 /// Lowest possible difficulty for Mainnet. See comment on Params::pow_limit for more info.
 const MAX_BITS_BITCOIN: Uint256 = Uint256([
@@ -40,11 +41,26 @@ const MAX_BITS_REGTEST: Uint256 = Uint256([
 ]);
 
 /// Lowest possible difficulty for DOGECOINMainnet.
-const MAX_BITS_DOGEMAINNET: Uint256 = MAX_BITS_BITCOIN;
+const MAX_BITS_DOGEMAINNET: Uint256 = Uint256([
+    0xffffffffff0f0000u64,
+    0xffffffffffffffffu64,
+    0xffffffffffffffffu64,
+    0xffffffffffffffffu64,
+]);
 /// Lowest possible difficulty for DOGECOINTestnet.
-const DOGE_MAX_DOGETESTNET: Uint256 = MAX_BITS_TESTNET;
+const DOGE_MAX_DOGETESTNET: Uint256 = Uint256([
+    0xffffffffff0f0000u64,
+    0xffffffffffffffffu64,
+    0xffffffffffffffffu64,
+    0xffffffffffffffffu64,
+]);
 /// Lowest possible difficulty for DOGECOINRegtest.
-const DOGE_MAX_DOGEREGTEST: Uint256 = MAX_BITS_REGTEST;
+const DOGE_MAX_DOGEREGTEST: Uint256 = Uint256([
+    0xffffffffffffff7fu64,
+    0xffffffffffffffffu64,
+    0xffffffffffffffffu64,
+    0xffffffffffffffffu64,
+]);
 
 /// Parameters that influence chain consensus.
 #[derive(Debug, Clone)]
@@ -82,8 +98,6 @@ pub struct Params {
     pub allow_min_difficulty_blocks: bool,
     /// Determines whether retargeting is disabled for this network or not.
     pub no_pow_retargeting: bool,
-    /// AuxPoW parameters
-    pub strict_chain_id: Option<bool>
 }
 
 impl Params {
@@ -103,7 +117,6 @@ impl Params {
                 pow_target_timespan: 14 * 24 * 60 * 60, // 2 weeks.
                 allow_min_difficulty_blocks: false,
                 no_pow_retargeting: false,
-                strict_chain_id: None,
             },
             Network::Testnet => Params {
                 network: Network::Testnet,
@@ -118,7 +131,6 @@ impl Params {
                 pow_target_timespan: 14 * 24 * 60 * 60, // 2 weeks.
                 allow_min_difficulty_blocks: true,
                 no_pow_retargeting: false,
-                strict_chain_id: None,
             },
             Network::Signet => Params {
                 network: Network::Signet,
@@ -133,7 +145,6 @@ impl Params {
                 pow_target_timespan: 14 * 24 * 60 * 60, // 2 weeks.
                 allow_min_difficulty_blocks: false,
                 no_pow_retargeting: false,
-                strict_chain_id: None,
             },
             Network::Regtest => Params {
                 network: Network::Regtest,
@@ -148,7 +159,6 @@ impl Params {
                 pow_target_timespan: 14 * 24 * 60 * 60, // 2 weeks.
                 allow_min_difficulty_blocks: true,
                 no_pow_retargeting: true,
-                strict_chain_id: None,
             },
             Network::DOGECOINMAINNET => Params {
                 network,
@@ -160,10 +170,9 @@ impl Params {
                 miner_confirmation_window: 10080,
                 pow_limit: MAX_BITS_DOGEMAINNET,
                 pow_target_spacing: 60,
-                pow_target_timespan: 4 * 60 * 60,
+                pow_target_timespan: 60,
                 allow_min_difficulty_blocks: false,
                 no_pow_retargeting: false,
-                strict_chain_id: Some(true),
             },
             Network::DOGECOINTESTNET => Params {
                 network,
@@ -175,10 +184,9 @@ impl Params {
                 miner_confirmation_window: 10080,
                 pow_limit: DOGE_MAX_DOGETESTNET,
                 pow_target_spacing: 60,
-                pow_target_timespan: 4 * 60 * 60,
+                pow_target_timespan: 60,
                 allow_min_difficulty_blocks: true,
                 no_pow_retargeting: false,
-                strict_chain_id: Some(false),
             },
             Network::DOGECOINREGTEST => Params {
                 network,
@@ -190,10 +198,9 @@ impl Params {
                 miner_confirmation_window: 720,
                 pow_limit: DOGE_MAX_DOGEREGTEST,
                 pow_target_spacing: 1,
-                pow_target_timespan: 4 * 60 * 60,
+                pow_target_timespan: 1,
                 allow_min_difficulty_blocks: true,
                 no_pow_retargeting: true,
-                strict_chain_id: Some(true),
             },
         }
     }
@@ -201,5 +208,82 @@ impl Params {
     /// Calculates the number of blocks between difficulty adjustments.
     pub fn difficulty_adjustment_interval(&self) -> u64 {
         self.pow_target_timespan / self.pow_target_spacing
+    }
+
+    /// Doge digishield_difficulty_calculation
+    pub fn doge_digishield_difficulty_calculation(&self, height: Height) -> bool {
+        match self.network {
+            Network::DOGECOINMAINNET | Network::DOGECOINTESTNET=> {
+                if height<= 144999 {
+                    true
+                }else {
+                    true
+                }
+            }
+            Network::DOGECOINREGTEST => {
+                if height<= 10 {
+                    false
+                }else {
+                    true
+                }
+            }
+            _ => unreachable!()
+        }
+    }
+
+    /// Doge strict_chain_id
+    pub fn doge_strict_chain_id(&self) -> bool {
+        match self.network {
+            Network::DOGECOINMAINNET | Network::DOGECOINREGTEST=> {
+                true
+            }
+            Network::DOGECOINTESTNET => {
+                false
+            }
+            _ => unreachable!()
+        }
+    }
+
+    /// Doge allow_min_difficulty_blocks
+    pub fn doge_allow_min_difficulty_blocks(&self, height: Height) -> bool {
+        match self.network {
+            Network::DOGECOINMAINNET => {
+                false
+            }
+            Network::DOGECOINTESTNET => {
+                if height <= 144999 {
+                    true
+                }else if height <= 157499 {
+                    false
+                }else {
+                    true
+                }
+            }
+            Network::DOGECOINREGTEST => {
+                true
+            }
+            _ => unreachable!()
+        }
+    }
+
+    /// Doge pow_target_timespan
+    pub fn doge_pow_target_timespan(&self, height: Height) -> u64{
+        match self.network {
+            Network::DOGECOINMAINNET | Network::DOGECOINTESTNET=> {
+                if height <= 144999 {
+                    4 * 60 * 60
+                }else {
+                    60
+                }
+            }
+            Network::DOGECOINREGTEST => {
+                if height <= 9 {
+                    4 * 60 * 60
+                }else {
+                    1
+                }
+            }
+            _ => unreachable!()
+        }
     }
 }

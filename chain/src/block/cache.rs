@@ -17,14 +17,9 @@ use nakamoto_common::bitcoin::util::BitArray;
 use nakamoto_common::bitcoin::Error::{BlockBadProofOfWork, BlockBadTarget};
 
 use nakamoto_common::bitcoin::util::uint::Uint256;
+use nakamoto_common::bitcoin_hashes::hex::ToHex;
 use nakamoto_common::block::tree::{self, BlockReader, BlockTree, Branch, Error, ImportResult};
-use nakamoto_common::block::{
-    self,
-    iter::Iter,
-    store::Store,
-    time::{self, Clock},
-    Bits, BlockTime, Height, Work,
-};
+use nakamoto_common::block::{self, iter::Iter, store::Store, time::{self, Clock}, Bits, BlockTime, Height, Work, Target};
 use nakamoto_common::network::Network;
 use nakamoto_common::nonempty::NonEmpty;
 use nakamoto_common::params::Params;
@@ -79,7 +74,7 @@ pub struct BlockCache<S: Store> {
     store: S,
 }
 
-impl<S: Store<Header = BlockHeader>> BlockCache<S> {
+impl<S: Store<Header=BlockHeader>> BlockCache<S> {
     /// Create a new `BlockCache` from a `Store`, consensus parameters, and checkpoints.
     pub fn new(
         store: S,
@@ -181,7 +176,7 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
     ///
     /// Panics if the range is negative.
     ///
-    fn range(&self, range: std::ops::Range<Height>) -> impl Iterator<Item = &CachedBlock> + '_ {
+    fn range(&self, range: std::ops::Range<Height>) -> impl Iterator<Item=&CachedBlock> + '_ {
         assert!(
             range.start <= range.end,
             "BlockCache::range: range start must not be greater than range end"
@@ -243,9 +238,10 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
         // is greater than the minimum allowed for this network.
         //
         // We do this because it's cheap to verify and prevents flooding attacks.
+        let target = header.target();
+        let limit = self.params.pow_limit;
         match self.params.network {
             Network::Mainnet | Network::Testnet | Network::Regtest | Network::Signet => {
-                let target = header.target();
                 match header.validate_pow(&target) {
                     Ok(_) => {
                         let limit = self.params.pow_limit;
@@ -265,7 +261,13 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
                     },
                 }
             }
-            _ => {}
+            Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST => {
+                if target > limit {
+                    println!("target {}", target);
+                    println!("limit {}", limit);
+                    return Err(Error::InvalidBlockTarget(target, limit));
+                }
+            }
         }
 
         if let Some(height) = self.headers.get(&header.prev_blockhash) {
@@ -365,7 +367,7 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
                     .map(|b| (b.height, b.header))
                     .collect(),
             )
-            .expect("BlockCache::import_block: there is always at least one connected block");
+                .expect("BlockCache::import_block: there is always at least one connected block");
 
             Ok(ImportResult::TipChanged {
                 header,
@@ -447,6 +449,111 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
         Ok(())
     }
 
+    // fn doge_compact_target(&self,tip: &CachedBlock, header: &BlockHeader) -> Bits {
+    //     let proof_of_work_limit = block::pow_limit_bits(&self.params.network);
+    //
+    // }
+    //
+    fn allow_digishield_min_difficulty_for_block(&self, tip: &CachedBlock, header: &BlockHeader) -> bool {
+        if !self.params.doge_allow_min_difficulty_blocks(tip.height + 1) {
+            return false;
+        }
+
+        if tip.height < 157500 {
+            return false;
+        }
+
+        header.time > (tip.time + self.params.doge_pow_target_timespan(tip.height + 1) as BlockTime * 2)
+    }
+
+    fn calculate_doge_compact_target(&self, tip: &CachedBlock, header: &BlockHeader) -> Bits {
+        let proof_of_work_limit = block::pow_limit_bits(&self.params.network);
+        if self.allow_digishield_min_difficulty_for_block(tip, header) {
+            return proof_of_work_limit;
+        }
+
+        let difficulty_adjustment_interval = if tip.height >= 145000 {
+            1
+        } else {
+            self.params.doge_pow_target_timespan(tip.height + 1) / self.params.pow_target_spacing
+        };
+
+        if (tip.height + 1) % difficulty_adjustment_interval != 0 {
+            if self.params.doge_allow_min_difficulty_blocks(tip.height + 1) {
+                // Special difficulty rule for testnet:
+                // If the new block's timestamp is more than 2* 10 minutes
+                // then allow mining of a min-difficulty block.
+                if header.time > tip.time + self.params.pow_target_spacing as BlockTime * 2 {
+                    return proof_of_work_limit;
+                } else {
+                    // Return the last non-special-min-difficulty-rules-block
+                    return self.doge_next_min_difficulty_target(&self.params,tip.height +1, difficulty_adjustment_interval);
+                }
+            }
+            return tip.bits;
+        } else {
+            // Litecoin: This fixes an issue where a 51% attack can change difficulty at will.
+            // Go back the full period unless it's the first retarget after genesis. Code courtesy of Art Forz
+            let mut blocks_to_go_back = difficulty_adjustment_interval - 1;
+            if tip.height + 1 != difficulty_adjustment_interval {
+                blocks_to_go_back = difficulty_adjustment_interval
+            }
+
+            // Go back by what we want to be 14 days worth of blocks
+            let height_first = tip.height - blocks_to_go_back;
+            assert!(height_first >= 0);
+            let first = self.get_block_by_height(height_first).unwrap();
+            self.calculate_dogecoin_next_work_required(tip, first.time)
+        }
+    }
+
+    fn calculate_dogecoin_next_work_required(&self, pindex_last: &CachedBlock, n_first_block_time: BlockTime) -> Bits {
+        let n_height = pindex_last.height + 1;
+        let retarget_timespan = self.params.doge_pow_target_timespan(n_height);
+        let mut n_actual_timespan = pindex_last.time - n_first_block_time;
+        let mut n_modulated_timespan = n_actual_timespan as u64;
+        let mut n_min_timespan;
+        let mut n_max_timespan;
+
+        if self.params.doge_digishield_difficulty_calculation(n_height) {
+            // DigiShield implementation
+            n_modulated_timespan = retarget_timespan + (n_modulated_timespan as u64 - retarget_timespan) / 8;
+
+            n_min_timespan = retarget_timespan - (retarget_timespan / 4);
+            n_max_timespan = retarget_timespan + (retarget_timespan / 2);
+        } else if n_height > 10000 {
+            n_min_timespan = retarget_timespan / 4;
+            n_max_timespan = retarget_timespan * 4;
+        } else if n_height > 5000 {
+            n_min_timespan = retarget_timespan / 8;
+            n_max_timespan = retarget_timespan * 4;
+        } else {
+            n_min_timespan = retarget_timespan / 16;
+            n_max_timespan = retarget_timespan * 4;
+        }
+
+        // Limit adjustment step
+        if n_modulated_timespan < n_min_timespan {
+            n_modulated_timespan = n_min_timespan;
+        } else if n_modulated_timespan > n_max_timespan {
+            n_modulated_timespan = n_max_timespan;
+        }
+
+        // Retarget
+        let bn_pow_limit = self.params.pow_limit;
+        let mut bn_new = BlockHeader::u256_from_compact_target(pindex_last.bits);
+        let bn_old = bn_new;
+
+        bn_new = bn_new.mul_u32(n_modulated_timespan.try_into().unwrap());
+        bn_new = bn_new / Target::from_u64(retarget_timespan as u64).unwrap();
+
+        if bn_new > bn_pow_limit {
+            bn_new = bn_pow_limit;
+        }
+
+        BlockHeader::compact_target_from_u256(&bn_new)
+    }
+
     /// Validate a block header as a potential new tip. This performs full header validation.
     fn validate(
         &self,
@@ -456,22 +563,29 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
     ) -> Result<(), Error> {
         assert_eq!(tip.hash(), header.prev_blockhash);
 
-        let compact_target = if self.params.allow_min_difficulty_blocks
-            && (tip.height + 1) % self.params.difficulty_adjustment_interval() != 0
-        {
-            if header.time > tip.time + self.params.pow_target_spacing as BlockTime * 2 {
-                block::pow_limit_bits(&self.params.network)
-            } else {
-                self.next_min_difficulty_target(&self.params)
+        let compact_target = match self.params.network {
+            Network::DOGECOINMAINNET | Network::DOGECOINREGTEST | Network::DOGECOINTESTNET => {
+                self.calculate_doge_compact_target(tip, header)
             }
-        } else {
-            self.next_difficulty_target(tip.height, tip.time, tip.target(), &self.params)
+            _ => {
+                if self.params.allow_min_difficulty_blocks
+                    && (tip.height + 1) % self.params.difficulty_adjustment_interval() != 0
+                {
+                    if header.time > tip.time + self.params.pow_target_spacing as BlockTime * 2 {
+                        block::pow_limit_bits(&self.params.network)
+                    } else {
+                        self.next_min_difficulty_target(&self.params)
+                    }
+                } else {
+                    self.next_difficulty_target(tip.height, tip.time, tip.target(), &self.params)
+                }
+            }
         };
 
         #[cfg(feature = "test")]
-        let target = BlockHeader::u256_from_compact_target(header.bits);
+            let target = BlockHeader::u256_from_compact_target(header.bits);
         #[cfg(not(feature = "test"))]
-        let target = BlockHeader::u256_from_compact_target(compact_target);
+            let target = BlockHeader::u256_from_compact_target(compact_target);
 
         match self.params.network {
             Network::Mainnet | Network::Testnet | Network::Regtest | Network::Signet => {
@@ -486,7 +600,15 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
                     Ok(_) => {}
                 }
             }
-            _ => {}
+            Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST => {
+                // we have checked the pow when decoding
+                if header.target() != target {
+                    println!("target bits {:?}", compact_target.to_hex());
+                    println!("header.bits {:?}", header.bits.to_hex());
+                    println!("header {:?}", header);
+                    return Err(Error::InvalidBlockTarget(header.target(), target));
+                }
+            }
         }
 
         // Validate against block checkpoints.
@@ -524,6 +646,22 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
         for (height, header) in self.iter().rev() {
             if header.bits != pow_limit_bits
                 || height % self.params.difficulty_adjustment_interval() == 0
+            {
+                return header.bits;
+            }
+        }
+        pow_limit_bits
+    }
+
+    /// Get the next doge minimum-difficulty target. Only valid in testnet and regtest networks.
+    fn doge_next_min_difficulty_target(&self, params: &Params, height: Height,difficulty_adjustment_interval: u64) -> Bits {
+        assert!(params.doge_allow_min_difficulty_blocks(height));
+
+        let pow_limit_bits = block::pow_limit_bits(&params.network);
+
+        for (height, header) in self.iter().rev() {
+            if header.bits != pow_limit_bits
+                || height % difficulty_adjustment_interval== 0
             {
                 return header.bits;
             }
@@ -579,9 +717,9 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
     }
 }
 
-impl<S: Store<Header = BlockHeader>> BlockTree for BlockCache<S> {
+impl<S: Store<Header=BlockHeader>> BlockTree for BlockCache<S> {
     /// Import blocks into the block tree. Blocks imported this way don't have to form a chain.
-    fn import_blocks<I: Iterator<Item = BlockHeader>, C: Clock>(
+    fn import_blocks<I: Iterator<Item=BlockHeader>, C: Clock>(
         &mut self,
         chain: I,
         context: &C,
@@ -596,12 +734,12 @@ impl<S: Store<Header = BlockHeader>> BlockTree for BlockCache<S> {
         for (i, header) in chain.enumerate() {
             match self.import_block(header, context) {
                 Ok(ImportResult::TipChanged {
-                    header,
-                    hash,
-                    height,
-                    reverted: r,
-                    connected: c,
-                }) => {
+                       header,
+                       hash,
+                       height,
+                       reverted: r,
+                       connected: c,
+                   }) => {
                     seen.extend(c.iter().map(|(_, h)| h.block_hash()));
                     reverted.extend(r.into_iter().map(|(i, h)| ((i, h.block_hash()), h)));
                     connected.extend(c);
@@ -671,7 +809,7 @@ impl<S: Store<Header = BlockHeader>> BlockTree for BlockCache<S> {
     }
 }
 
-impl<S: Store<Header = BlockHeader>> BlockReader for BlockCache<S> {
+impl<S: Store<Header=BlockHeader>> BlockReader for BlockCache<S> {
     /// Get a block by hash. Only searches the active chain.
     fn get_block(&self, hash: &BlockHash) -> Option<(Height, &BlockHeader)> {
         self.headers
@@ -695,11 +833,11 @@ impl<S: Store<Header = BlockHeader>> BlockReader for BlockCache<S> {
 
         // Since it's not in the active chain, check stale blocks.
         if let Some(Candidate {
-            fork_height,
-            fork_header,
-            headers,
-            ..
-        }) = self.fork(to)
+                        fork_height,
+                        fork_header,
+                        headers,
+                        ..
+                    }) = self.fork(to)
         {
             Some((fork_height, NonEmpty::from((fork_header, headers))))
         } else {
@@ -723,7 +861,7 @@ impl<S: Store<Header = BlockHeader>> BlockReader for BlockCache<S> {
     }
 
     /// Iterate over the longest chain, starting from genesis.
-    fn iter<'a>(&'a self) -> Box<dyn DoubleEndedIterator<Item = (Height, BlockHeader)> + 'a> {
+    fn iter<'a>(&'a self) -> Box<dyn DoubleEndedIterator<Item=(Height, BlockHeader)> + 'a> {
         Box::new(Iter::new(&self.chain).map(|(i, h)| (i, h.header)))
     }
 
@@ -731,7 +869,7 @@ impl<S: Store<Header = BlockHeader>> BlockReader for BlockCache<S> {
     fn range<'a>(
         &'a self,
         range: std::ops::Range<Height>,
-    ) -> Box<dyn Iterator<Item = (Height, BlockHash)> + 'a> {
+    ) -> Box<dyn Iterator<Item=(Height, BlockHash)> + 'a> {
         Box::new(
             self.chain
                 .iter()
