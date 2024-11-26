@@ -23,11 +23,12 @@ use quickcheck_macros::quickcheck;
 use nakamoto_common::bitcoin;
 use nakamoto_common::bitcoin::blockdata::block::BlockHeader;
 use nakamoto_common::bitcoin::blockdata::constants;
-use nakamoto_common::bitcoin::consensus::params::Params;
 use nakamoto_common::bitcoin::hash_types::{BlockHash, TxMerkleNode};
 use nakamoto_common::bitcoin_hashes::hex::FromHex;
 
 use nakamoto_common::bitcoin::util::uint::Uint256;
+use nakamoto_common::network::Network;
+use nakamoto_common::params::Params;
 
 /// Sun, 12 Jul 2020 15:03:05 +0000.
 const LOCAL_TIME: LocalTime = LocalTime::from_secs(1594566185);
@@ -323,8 +324,8 @@ impl std::fmt::Debug for BlockImport {
 
 impl Arbitrary for BlockImport {
     fn arbitrary(g: &mut Gen) -> BlockImport {
-        let network = bitcoin::Network::Regtest;
-        let genesis = constants::genesis_block(network).header;
+        let network = Network::Regtest;
+        let genesis = network.genesis();
         let params = Params::new(network);
         let store = store::Memory::new(NonEmpty::new(genesis));
         let ctx = AdjustedTime::<net::SocketAddr>::new(LOCAL_TIME);
@@ -383,8 +384,8 @@ fn prop_invalid_block_target(import: BlockImport) -> bool {
 
 #[test]
 fn test_invalid_orphan_block_target() {
-    let network = bitcoin::Network::Regtest;
-    let genesis = constants::genesis_block(network).header;
+    let network = Network::Regtest;
+    let genesis = network.genesis();
     let store = store::Memory::new(NonEmpty::new(genesis));
     let clock = AdjustedTime::<net::SocketAddr>::new(LOCAL_TIME);
     let params = Params::new(network);
@@ -445,8 +446,8 @@ fn test_invalid_orphan_block_target() {
 
 #[test]
 fn test_invalid_orphan_block_pow() {
-    let network = bitcoin::Network::Bitcoin;
-    let genesis = constants::genesis_block(network).header;
+    let network = Network::Regtest;
+    let genesis = network.genesis();
     let store = store::Memory::new(NonEmpty::new(genesis));
     let clock = AdjustedTime::<net::SocketAddr>::new(LOCAL_TIME);
     let params = Params::new(network);
@@ -499,8 +500,8 @@ fn prop_invalid_block_pow(import: BlockImport) -> bool {
 fn test_bitcoin_difficulty() {
     use crate::tests;
 
-    let network = bitcoin::Network::Bitcoin;
-    let genesis = constants::genesis_block(network).header;
+    let network = Network::Regtest;
+    let genesis = network.genesis();
     let params = Params::new(network);
 
     let mut cache = HeightCache::new(genesis);
@@ -534,11 +535,10 @@ fn test_bitcoin_difficulty() {
 // Test that we're correctly loading headers from the header store.
 #[test]
 fn test_from_store() {
-    let genesis = constants::genesis_block(bitcoin::Network::Bitcoin).header;
+    let network = Network::Regtest;
+    let genesis = network.genesis();
     let store = store::File::open(&*nakamoto_test::headers::PATH, genesis).unwrap();
     let store_headers = store.iter().collect::<Result<Vec<_>, _>>().unwrap();
-
-    let network = bitcoin::Network::Bitcoin;
     let params = Params::new(network);
 
     let cache = BlockCache::from(store, params, &[]).unwrap();
@@ -559,8 +559,8 @@ fn test_from_store() {
 
 #[test]
 fn test_median_time_past() {
-    let network = bitcoin::Network::Bitcoin;
-    let genesis = constants::genesis_block(network).header;
+    let network = Network::Regtest;
+    let genesis = network.genesis();
     let params = Params::new(network);
     let store = store::File::open(&*nakamoto_test::headers::PATH, genesis).unwrap();
 
@@ -802,8 +802,8 @@ impl std::fmt::Debug for Tree {
 fn prop_cache_import_tree_genesis(tree: Tree) -> bool {
     let headers = tree.headers();
 
-    let network = bitcoin::Network::Regtest;
-    let genesis = constants::genesis_block(network).header;
+    let network = Network::Regtest;
+    let genesis = network.genesis();
     let params = Params::new(network);
     let store = store::Memory::new(NonEmpty::new(genesis));
 
@@ -833,7 +833,7 @@ fn prop_cache_import_tree_randomized(tree: Tree) {
         &mut rng,
     );
 
-    let network = bitcoin::Network::Regtest;
+    let network = Network::Regtest;
     let params = Params::new(network);
     let store = store::Memory::new(initial.clone());
 
@@ -883,8 +883,8 @@ fn prop_cache_import_tree_randomized(tree: Tree) {
 
 #[test]
 fn test_cache_import_unchanged() {
-    let network = bitcoin::Network::Regtest;
-    let genesis = constants::genesis_block(network).header;
+    let network = Network::Regtest;
+    let genesis = network.genesis();
     let params = Params::new(network);
     let store = store::Memory::new(NonEmpty::new(genesis));
     let ctx = AdjustedTime::<net::SocketAddr>::new(LOCAL_TIME);
@@ -920,8 +920,8 @@ fn test_cache_import_unchanged() {
 
 #[test]
 fn test_cache_import_height_unchanged() {
-    let network = bitcoin::Network::Regtest;
-    let genesis = constants::genesis_block(network).header;
+    let network = Network::Regtest;
+    let genesis = network.genesis();
     let params = Params::new(network);
     let store = store::Memory::new(NonEmpty::new(genesis));
     let ctx = AdjustedTime::<net::SocketAddr>::new(LOCAL_TIME);
@@ -964,8 +964,8 @@ fn test_cache_import_height_unchanged() {
 
 #[test]
 fn test_cache_import_back_and_forth() {
-    let network = bitcoin::Network::Regtest;
-    let genesis = constants::genesis_block(network).header;
+    let network = Network::Regtest;
+    let genesis = network.genesis();
     let params = Params::new(network);
     let store = store::Memory::new(NonEmpty::new(genesis));
     let ctx = AdjustedTime::<net::SocketAddr>::new(LOCAL_TIME);
@@ -1051,8 +1051,8 @@ fn test_cache_import_equal_difficulty_blocks() {
             nonce: 3850925874,
         },
     ];
-    let network = bitcoin::Network::Regtest;
-    let genesis = constants::genesis_block(network).header;
+    let network = Network::Regtest;
+    let genesis = network.genesis();
     let params = Params::new(network);
     let store = store::Memory::new(NonEmpty::new(genesis));
     let ctx = AdjustedTime::<net::SocketAddr>::new(LOCAL_TIME);
@@ -1093,8 +1093,8 @@ fn test_cache_import_longer_chain_with_less_difficulty() {
 
 #[test]
 fn test_cache_import_with_checkpoints() {
-    let network = bitcoin::Network::Regtest;
-    let genesis = constants::genesis_block(network).header;
+    let network = Network::Regtest;
+    let genesis = network.genesis();
     let params = Params::new(network);
     let store = store::Memory::new(NonEmpty::new(genesis));
     let ctx = AdjustedTime::<net::SocketAddr>::new(LOCAL_TIME);
@@ -1142,8 +1142,8 @@ fn test_cache_import_with_checkpoints() {
 
 #[test]
 fn test_cache_import_invalid_fork() {
-    let network = bitcoin::Network::Regtest;
-    let genesis = constants::genesis_block(network).header;
+    let network = Network::Regtest;
+    let genesis = network.genesis();
     let params = Params::new(network);
     let store = store::Memory::new(NonEmpty::new(genesis));
     let ctx = AdjustedTime::<net::SocketAddr>::new(LOCAL_TIME);
@@ -1198,8 +1198,8 @@ fn test_cache_import_invalid_fork() {
 
 #[test]
 fn test_cache_import_fork_with_checkpoints() {
-    let network = bitcoin::Network::Regtest;
-    let genesis = constants::genesis_block(network).header;
+    let network = Network::Regtest;
+    let genesis = network.genesis();
     let params = Params::new(network);
     let store = store::Memory::new(NonEmpty::new(genesis));
     let ctx = AdjustedTime::<net::SocketAddr>::new(LOCAL_TIME);
@@ -1272,8 +1272,8 @@ fn test_cache_import_fork_with_checkpoints() {
 
 #[test]
 fn test_cache_import_fork_with_future_checkpoint() {
-    let network = bitcoin::Network::Regtest;
-    let genesis = constants::genesis_block(network).header;
+    let network = Network::Regtest;
+    let genesis = network.genesis();
     let params = Params::new(network);
     let store = store::Memory::new(NonEmpty::new(genesis));
     let ctx = AdjustedTime::<net::SocketAddr>::new(LOCAL_TIME);
@@ -1307,8 +1307,8 @@ fn test_cache_import_fork_with_future_checkpoint() {
 #[test]
 #[allow(unused_variables)]
 fn test_cache_import_duplicate() {
-    let network = bitcoin::Network::Regtest;
-    let genesis = constants::genesis_block(network).header;
+    let network = Network::Regtest;
+    let genesis = network.genesis();
     let params = Params::new(network);
     let store = store::Memory::new(NonEmpty::new(genesis));
     let ctx = AdjustedTime::<net::SocketAddr>::new(LOCAL_TIME);
@@ -1353,8 +1353,8 @@ fn test_cache_import_duplicate() {
 #[test]
 #[allow(unused_variables)]
 fn test_cache_import_unordered() {
-    let network = bitcoin::Network::Regtest;
-    let genesis = constants::genesis_block(network).header;
+    let network = Network::Regtest;
+    let genesis = network.genesis();
     let params = Params::new(network);
     let store = store::Memory::new(NonEmpty::new(genesis));
     let ctx = AdjustedTime::<net::SocketAddr>::new(LOCAL_TIME);
@@ -1438,8 +1438,8 @@ fn test_cache_import_unordered() {
 #[test]
 #[allow(clippy::identity_op)]
 fn test_cache_locate_headers() {
-    let network = bitcoin::Network::Bitcoin;
-    let genesis = constants::genesis_block(network).header;
+    let network = Network::Regtest;
+    let genesis = network.genesis();
     let params = Params::new(network);
     let store = store::Memory::new(NonEmpty::new(genesis));
     let ctx = AdjustedTime::<net::SocketAddr>::new(LOCAL_TIME);

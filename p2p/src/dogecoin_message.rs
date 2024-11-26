@@ -53,14 +53,14 @@ impl Decodable for DogeCoinRawNetworkMessage {
                         headers.push(aux_header.block_header)
                     } else {
                         // validate aux and pow
-                        // aux_header.check_aux(&params).map_err(|_|encode::Error::ParseFailed("check_aux failed"))?;
-                       if let Err(e) =  aux_header.check_aux(&params) {
-                           println!("check_aux failed {e} {}", aux_header.block_header.block_hash())
-                       };
-                        // aux_header.validate_pow().map_err(|_|encode::Error::ParseFailed("validate_pow failed"))?;
-                        if let Err(e) = aux_header.validate_pow() {
-                            println!("validate_pow failed {e} {}", aux_header.block_header.block_hash())
-                        }
+                        aux_header.check_aux(&params).map_err(|_|encode::Error::ParseFailed("check_aux failed"))?;
+                       // if let Err(e) =  aux_header.check_aux(&params) {
+                       //     println!("check_aux failed {e} {}", aux_header.block_header.block_hash())
+                       // };
+                        aux_header.validate_pow().map_err(|_|encode::Error::ParseFailed("validate_pow failed"))?;
+                        // if let Err(e) = aux_header.validate_pow() {
+                        //     println!("validate_pow failed {e} {}", aux_header.block_header.block_hash())
+                        // }
                         headers.push(aux_header.block_header)
                     }
                 }
@@ -324,7 +324,7 @@ impl BlockHeaderAuxPow {
         let root_hash = Self::check_merkle_branch(
             self.block_header.block_hash().as_hash(),
             &aux.blockchain_merkle_branch_hashes,
-            aux.n_index,
+            aux.chain_index,
         );
 
         let mut root_hash_bytes = root_hash.into_inner();
@@ -453,7 +453,7 @@ mod test {
 
     #[test]
     fn test_aux_header() {
-        let aux_header_buf = Vec::from_hex("03016200cc1099acbc7df224e8be196ea1a1826c3a354e9c38a8cfdafeb8b286cb6b3b3f2b2f26c9c61dec4a5472159bf76040426a0f1d9aff23064483fcd8430088330c615b265ab992051e0000000002000000010000000000000000000000000000000000000000000000000000000000000000ffffffff42030e3e1c04615b265a2ffabe6d6d215ea5055176402dd89035452eeae6219ab60c78356e4bf4eed11ae56fdbf585010000000000000001000000000000000e010000ffffffff02343fc846000000001976a914f6967b6fdb0ad6b1d8cbb97fce07a9d56fc5610d88ac7cb2b903000000001976a914f6967b6fdb0ad6b1d8cbb97fce07a9d56fc5610d88ac00000000f26d09611379bb24e1cf781251dc80f9b667192f7fd922feb55460bcfca6ffc40332af1303c828c485145a5db87748da998a7663fd743377cac6945c5573d06c5807221322824866d20f26ec81f69c7a218a9b71834d5815bfe4c656035dfb9c64613aa1c3a4787aa21319ce6fb66d81950a5274f3c16695eda0df9bb3b485216d00000000000000000003000000cb56cfd923a71fcfb683b2d41b55b6499a749d16b3b1095d984127e47b56b4eb94c97981e68cdcadf9e0bda59952b5dd59cc904df3e651e275ecaa00ebfba91f5b5b265a1f4b141dd013e7db").unwrap();
+        let aux_header_buf = Vec::from_hex("020162005adc85626e3c36d8e65de509f0a77ffbe856a68402f5689eda3e93594e216eede232ad42c0cbe2792622cf70b982ce940ce8d5b2251275c71c12c56c8456e5f8208b4654d381031b0000000001000000010000000000000000000000000000000000000000000000000000000000000000ffffffff3803d81a0afabe6d6d96c91675522fb38782b9a2abc1a404648f0e0c2493f2a269dc994da6d4c36d6d40000000000000005b8b05094e000000ffffffff0100f2052a010000001976a914aa3750aa18b8a0f3f0590731e1fab934856680cf88ac00000000e1627671123a1355decccf343a3299c236dd305af4a2473a8a340200000000000000000000066201f4891fc87ea955b7081c3568ec5043b7b2d6ad95e4c818e67987e841db266c4127661ba7d68c453b449868e6135a6ac0d9351a3e40d7dd58767531de67ee31284c19194806e9c00943e05a9d1a79e17fa0c9b79bef9027ad2ca0bdf99eabfe2d8f99be8b35640357d1af6ec9884840d0a9d91dbac1a8334df680016151fff7be6318b98f6decf870b980433c69be97f83ce72ff90f4a1e0236f7bd622eb69b91ec90c8b1ed417d8844fadee53245f60fda029b1175dccf99d26eb5e3de7338000000020000009143a4e3da8a8720eacaa579c803a9e7cc3e0d403bacdd45d5d3b1eed00c711051c0e41c72140e882780e4d6a2df66cc06aaa6dd5b82f6a42e5d52ee61dadc1a208b465483cb011b4c116601").unwrap();
         let (aux_header, _) = encode::deserialize_partial::<BlockHeaderAuxPow>(&aux_header_buf).unwrap();
         let params = Network::DOGECOINTESTNET.params();
         assert!(aux_header.aux.is_some());
@@ -470,16 +470,5 @@ mod test {
             assert!(aux_header.check_aux(&params).is_ok());
         }
         assert!(no_aux_header.validate_pow().is_ok());
-    }
-
-    #[test]
-    fn test_doge_pow_limit() {
-        let bytes = hex::decode("00000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff").unwrap();
-        let mut ret = [0u64; 4];
-        util::endian::bytes_to_u64_slice_le(&bytes, &mut ret);
-        let u = &Uint256(ret);
-        for i in u.0 {
-            println!("{}", i.to_hex())
-        }
     }
 }

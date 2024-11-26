@@ -455,7 +455,7 @@ impl<S: Store<Header=BlockHeader>> BlockCache<S> {
     // }
     //
     fn allow_digishield_min_difficulty_for_block(&self, tip: &CachedBlock, header: &BlockHeader) -> bool {
-        if !self.params.doge_allow_min_difficulty_blocks(tip.height + 1) {
+        if !self.params.doge_allow_min_difficulty_blocks(tip.height) {
             return false;
         }
 
@@ -463,11 +463,12 @@ impl<S: Store<Header=BlockHeader>> BlockCache<S> {
             return false;
         }
 
-        header.time > (tip.time + self.params.doge_pow_target_timespan(tip.height + 1) as BlockTime * 2)
+        header.time > (tip.time + self.params.doge_pow_target_timespan(tip.height) as BlockTime * 2)
     }
 
     fn calculate_doge_compact_target(&self, tip: &CachedBlock, header: &BlockHeader) -> Bits {
         let proof_of_work_limit = block::pow_limit_bits(&self.params.network);
+        println!("proof_of_work_limit {}",proof_of_work_limit.to_hex());
         if self.allow_digishield_min_difficulty_for_block(tip, header) {
             return proof_of_work_limit;
         }
@@ -475,11 +476,11 @@ impl<S: Store<Header=BlockHeader>> BlockCache<S> {
         let difficulty_adjustment_interval = if tip.height >= 145000 {
             1
         } else {
-            self.params.doge_pow_target_timespan(tip.height + 1) / self.params.pow_target_spacing
+            self.params.doge_pow_target_timespan(tip.height) / self.params.pow_target_spacing
         };
 
         if (tip.height + 1) % difficulty_adjustment_interval != 0 {
-            if self.params.doge_allow_min_difficulty_blocks(tip.height + 1) {
+            if self.params.doge_allow_min_difficulty_blocks(tip.height) {
                 // Special difficulty rule for testnet:
                 // If the new block's timestamp is more than 2* 10 minutes
                 // then allow mining of a min-difficulty block.
@@ -509,41 +510,54 @@ impl<S: Store<Header=BlockHeader>> BlockCache<S> {
 
     fn calculate_dogecoin_next_work_required(&self, pindex_last: &CachedBlock, n_first_block_time: BlockTime) -> Bits {
         let n_height = pindex_last.height + 1;
-        let retarget_timespan = self.params.doge_pow_target_timespan(n_height);
-        let mut n_actual_timespan = pindex_last.time - n_first_block_time;
-        let mut n_modulated_timespan = n_actual_timespan as u64;
+        let retarget_timespan = self.params.doge_pow_target_timespan(n_height) as i64;
+        // println!("pindex_last.time {}", pindex_last.time);
+        // println!("n_first_block_time {}",n_first_block_time);
+        let mut n_actual_timespan = pindex_last.time as i64 - n_first_block_time as i64;
+        // println!("n_actual_timespan {n_actual_timespan}");
+        let mut n_modulated_timespan = n_actual_timespan;
         let mut n_min_timespan;
         let mut n_max_timespan;
-
+        // println!("doge_digishield_difficulty_calculation {}", self.params.doge_digishield_difficulty_calculation(n_height));
         if self.params.doge_digishield_difficulty_calculation(n_height) {
             // DigiShield implementation
-            n_modulated_timespan = retarget_timespan + (n_modulated_timespan as u64 - retarget_timespan) / 8;
+            // println!("in 1");
+            n_modulated_timespan = retarget_timespan + (n_modulated_timespan - retarget_timespan) / 8;
 
             n_min_timespan = retarget_timespan - (retarget_timespan / 4);
             n_max_timespan = retarget_timespan + (retarget_timespan / 2);
         } else if n_height > 10000 {
+            // println!("in 2");
             n_min_timespan = retarget_timespan / 4;
             n_max_timespan = retarget_timespan * 4;
         } else if n_height > 5000 {
+            // println!("in 3");
             n_min_timespan = retarget_timespan / 8;
             n_max_timespan = retarget_timespan * 4;
         } else {
+            // println!("in 4");
             n_min_timespan = retarget_timespan / 16;
             n_max_timespan = retarget_timespan * 4;
         }
 
+        // println!("n_min_timespan {}", n_min_timespan);
+        // println!("n_max_timespan {}", n_max_timespan);
+
         // Limit adjustment step
         if n_modulated_timespan < n_min_timespan {
+            // println!("2in 1");
             n_modulated_timespan = n_min_timespan;
         } else if n_modulated_timespan > n_max_timespan {
+            // println!("2in 2");
             n_modulated_timespan = n_max_timespan;
         }
+        // println!("n_modulated_timespan {}", n_modulated_timespan);
 
         // Retarget
         let bn_pow_limit = self.params.pow_limit;
+        // println!("bn_pow_limit {}",bn_pow_limit);
         let mut bn_new = BlockHeader::u256_from_compact_target(pindex_last.bits);
-        let bn_old = bn_new;
-
+        // let bn_old = bn_new;
         bn_new = bn_new.mul_u32(n_modulated_timespan.try_into().unwrap());
         bn_new = bn_new / Target::from_u64(retarget_timespan as u64).unwrap();
 
@@ -979,5 +993,137 @@ impl<S: Store<Header=BlockHeader>> BlockReader for BlockCache<S> {
             }
         }
         hashes
+    }
+}
+
+#[cfg(test)]
+mod test_doge {
+    use nakamoto_common::bitcoin::BlockHeader;
+    use nakamoto_common::network::Network;
+    use nakamoto_common::params::Params;
+    use crate::cache::{BlockCache, CachedBlock};
+    use nakamoto_common::bitcoin::consensus::deserialize;
+    use nakamoto_common::bitcoin_hashes::hex::ToHex;
+    use nakamoto_common::block::{Bits, BlockTime, Height};
+    use nakamoto_common::nonempty::NonEmpty;
+    use crate::store;
+
+    fn test_calculate_dogecoin_next_work_required(
+        network: Network,
+        pindex_last_header: CachedBlock,
+        n_first_block_time: BlockTime,
+        expected_bit: &str
+    ) {
+        let genesis = network.genesis();
+        let params = Params::new(network);
+        let store = store::Memory::new(NonEmpty::new(genesis));
+        let cache = BlockCache::from(store, params, &[]).unwrap();
+
+        let new_bits = cache.calculate_dogecoin_next_work_required(&pindex_last_header, n_first_block_time);
+        println!("new_bits {}",new_bits);
+        println!("new_bits {}",new_bits.to_hex());
+        let result = hex::decode(expected_bit).unwrap();
+        let mut buf = [0;4];
+        buf.copy_from_slice(&result);
+        let expected = u32::from_be_bytes(buf);
+        println!("expected {expected}");
+        assert_eq!(new_bits, expected)
+    }
+
+    #[test]
+    fn test_cal_doge_target() {
+        //get_next_work_difficulty_limit
+        println!("get_next_work_difficulty_limit");
+        let header_bytes = hex::decode("010000006c1d7587f53e1a90a2e05a7c7757e75a4d0ec971f6c885f5f780b546500cf4048f5d12df35bbf5906a36f9169f49e5907d747a049f01b944c478243702d3e17c76f0a352f0ff0f1e000244ec").unwrap();
+        let pindex_last_header: BlockHeader = deserialize(&header_bytes).unwrap();
+        test_calculate_dogecoin_next_work_required(
+            Network::DOGECOINMAINNET,
+            CachedBlock {
+                height: 239,
+                header: pindex_last_header,
+            },
+            1386474927,
+            "1e00ffff"
+        );
+
+        // test_get_next_work_pre_digishield
+        println!();
+        println!();
+        println!("test_get_next_work_pre_digishield");
+        let header_bytes = hex::decode("0100000011eb3fb946eaa19c8a321ebe21afb59f3fb052e9a56df68f4dad837ce05780da0735480f6ec6b3582d42cd081bcaf5d9b3fc764e7a9343c10de515307ae90fdc813dab5206121a1c00f95ce3").unwrap();
+        let pindex_last_header: BlockHeader = deserialize(&header_bytes).unwrap();
+        test_calculate_dogecoin_next_work_required(
+            Network::DOGECOINMAINNET,
+            CachedBlock {
+                height: 9599,
+                header: pindex_last_header,
+            },
+            1386942008,
+            "1c15ea59"
+        );
+
+        // get_next_work_digishield
+        println!();
+        println!();
+        println!("get_next_work_digishield");
+        let header_bytes = hex::decode("0200000058054081d6f4a30d6976ac03be7e3890f67fd8331613bb7ab95eb4b40d389a91339c41b140270652190c0ae3c31f8dbd400719b2ebe1cf8858a75ad6dc14663197742753fd9d491b00299347").unwrap();
+        let pindex_last_header: BlockHeader = deserialize(&header_bytes).unwrap();
+        test_calculate_dogecoin_next_work_required(
+            Network::DOGECOINMAINNET,
+            CachedBlock {
+                height: 145000,
+                header: pindex_last_header,
+            },
+            1395094427,
+            "1b671062"
+        );
+
+        // get_next_work_digishield_modulated_upper
+        println!();
+        println!();
+        println!("get_next_work_digishield_modulated_upper");
+        let header_bytes = hex::decode("020000007d373ddbd6ae5eafec37346a1b2253d9e04e02e36aa5567bf7985aac929b610612c8bec8263ef9f06b50ece2fc3747892526369fdf45cf76d7b92e735221477db08e2753cd39341b00250bce").unwrap();
+        let pindex_last_header: BlockHeader = deserialize(&header_bytes).unwrap();
+        test_calculate_dogecoin_next_work_required(
+            Network::DOGECOINMAINNET,
+            CachedBlock {
+                height: 145107,
+                header: pindex_last_header,
+            },
+            1395100835,
+            "1b4e56b3"
+        );
+
+        // get_next_work_digishield_modulated_lower
+        println!();
+        println!();
+        println!("get_next_work_digishield_modulated_lower");
+        let header_bytes = hex::decode("02000000335fb627c94002c46c8b9ca16b6835c1343c465390ddd87dbf25c134e8a662a27c597ea423e807c40ab788c294a75ef6bb515dd369f86fa3e8786cf7e16abeb2dfd02b53216f441b002fa9b9").unwrap();
+        let pindex_last_header: BlockHeader = deserialize(&header_bytes).unwrap();
+        test_calculate_dogecoin_next_work_required(
+            Network::DOGECOINMAINNET,
+            CachedBlock {
+                height: 149423,
+                header: pindex_last_header,
+            },
+            1395380517,
+            "1b335358"
+        );
+
+        // get_next_work_digishield_rounding
+        println!();
+        println!();
+        println!("get_next_work_digishield_rounding");
+        let header_bytes = hex::decode("0200000072de7b9bffdf6da71f07394a7d0859de1d3366a214328d82925c7c0de7ca47ccc423aa06735181ced11e841d8cd0fb55abe09948625db95698f54e3ec78d73b3c77427536210671b00cafd9b").unwrap();
+        let pindex_last_header: BlockHeader = deserialize(&header_bytes).unwrap();
+        test_calculate_dogecoin_next_work_required(
+            Network::DOGECOINMAINNET,
+            CachedBlock {
+                height: 145001,
+                header: pindex_last_header,
+            },
+            1395094679,
+            "1b6558a4"
+        );
     }
 }

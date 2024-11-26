@@ -42,24 +42,24 @@ const MAX_BITS_REGTEST: Uint256 = Uint256([
 
 /// Lowest possible difficulty for DOGECOINMainnet.
 const MAX_BITS_DOGEMAINNET: Uint256 = Uint256([
-    0xffffffffff0f0000u64,
     0xffffffffffffffffu64,
     0xffffffffffffffffu64,
     0xffffffffffffffffu64,
+    0x00000fffffffffffu64,
 ]);
 /// Lowest possible difficulty for DOGECOINTestnet.
 const DOGE_MAX_DOGETESTNET: Uint256 = Uint256([
-    0xffffffffff0f0000u64,
     0xffffffffffffffffu64,
     0xffffffffffffffffu64,
     0xffffffffffffffffu64,
+    0x00000fffffffffffu64,
 ]);
 /// Lowest possible difficulty for DOGECOINRegtest.
 const DOGE_MAX_DOGEREGTEST: Uint256 = Uint256([
-    0xffffffffffffff7fu64,
     0xffffffffffffffffu64,
     0xffffffffffffffffu64,
     0xffffffffffffffffu64,
+    0x7fffffffffffffffu64,
 ]);
 
 /// Parameters that influence chain consensus.
@@ -285,5 +285,48 @@ impl Params {
             }
             _ => unreachable!()
         }
+    }
+}
+
+#[cfg(test)]
+mod test_doge_params {
+    use crate::network::Network;
+    use crate::params::Params;
+
+    #[test]
+    fn test_hardfork_parameters() {
+        // mainnet
+        let params = Params::new(Network::DOGECOINMAINNET);
+        assert_eq!(params.doge_pow_target_timespan(0), 14400);
+        assert_eq!(params.doge_digishield_difficulty_calculation(0), false);
+
+        assert_eq!(params.doge_pow_target_timespan(144999), 14400);
+        assert_eq!(params.doge_digishield_difficulty_calculation(144999), false);
+
+        assert_eq!(params.doge_pow_target_timespan(145000), 60);
+        assert_eq!(params.doge_digishield_difficulty_calculation(145000), true);
+
+        assert_eq!(params.doge_pow_target_timespan(371336), 60);
+        assert_eq!(params.doge_digishield_difficulty_calculation(371336), true);
+
+        assert_eq!(params.doge_pow_target_timespan(371337), 60);
+        assert_eq!(params.doge_digishield_difficulty_calculation(371337), true);
+
+        // testnet
+        let params = Params::new(Network::DOGECOINMAINNET);
+        assert_eq!(params.doge_pow_target_timespan(0), 14400);
+        assert_eq!(params.doge_digishield_difficulty_calculation(0), false);
+
+        assert_eq!(params.doge_pow_target_timespan(144999), 14400);
+        assert_eq!(params.doge_digishield_difficulty_calculation(144999), false);
+
+        assert_eq!(params.doge_pow_target_timespan(145000), 60);
+        assert_eq!(params.doge_digishield_difficulty_calculation(145000), true);
+
+        assert_eq!(params.doge_pow_target_timespan(371336), 60);
+        assert_eq!(params.doge_digishield_difficulty_calculation(371336), true);
+
+        assert_eq!(params.doge_pow_target_timespan(371337), 60);
+        assert_eq!(params.doge_digishield_difficulty_calculation(371337), true);
     }
 }
