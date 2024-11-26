@@ -46,21 +46,12 @@ impl Decodable for DogeCoinRawNetworkMessage {
                 for aux_header in aux_headers {
                     if aux_header.aux.is_none() {
                         // validate pow
-                        // aux_header.validate_pow().map_err(|_|encode::Error::ParseFailed("validate_pow failed"))?;
-                        if let Err(e) = aux_header.validate_pow() {
-                            println!("validate_pow failed {e} {}", aux_header.block_header.block_hash())
-                        }
+                        aux_header.validate_pow().map_err(|_|encode::Error::ParseFailed("validate_pow failed"))?;
                         headers.push(aux_header.block_header)
                     } else {
                         // validate aux and pow
-                        aux_header.check_aux(&params).map_err(|_|encode::Error::ParseFailed("check_aux failed"))?;
-                       // if let Err(e) =  aux_header.check_aux(&params) {
-                       //     println!("check_aux failed {e} {}", aux_header.block_header.block_hash())
-                       // };
-                        aux_header.validate_pow().map_err(|_|encode::Error::ParseFailed("validate_pow failed"))?;
-                        // if let Err(e) = aux_header.validate_pow() {
-                        //     println!("validate_pow failed {e} {}", aux_header.block_header.block_hash())
-                        // }
+                        aux_header.check_aux(&params).map_err(|_| encode::Error::ParseFailed("check_aux failed"))?;
+                        aux_header.validate_pow().map_err(|_| encode::Error::ParseFailed("validate_pow failed"))?;
                         headers.push(aux_header.block_header)
                     }
                 }
@@ -354,11 +345,10 @@ impl BlockHeaderAuxPow {
             if pc != pc_head_pos + Self::PCH_MERGED_MINING_HEADER.len() {
                 return Err(util::Error::BlockBadProofOfWork); // "Merged mining header is not just before chain merkle root"
             }
-        } else {
-            if pc > 20 {
-                return Err(util::Error::BlockBadProofOfWork); // "Aux POW chain merkle root must start in the first 20 bytes of the parent coinbase"
-            }
+        } else if pc > 20 {
+            return Err(util::Error::BlockBadProofOfWork); // "Aux POW chain merkle root must start in the first 20 bytes of the parent coinbase"
         }
+
 
         pc += root_hash_bytes.len();
         if tx_script.len() < pc + 8 {
@@ -435,7 +425,6 @@ impl BlockHeaderAuxPow {
             output[i] = u64::from_le_bytes(chunk.try_into().expect("Chunk size must be 8 bytes"));
         }
     }
-
 }
 
 #[cfg(test)]

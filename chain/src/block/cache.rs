@@ -10,6 +10,7 @@ pub mod test;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::ops::ControlFlow;
+use log::error;
 
 use nakamoto_common::bitcoin::blockdata::block::BlockHeader;
 use nakamoto_common::bitcoin::hash_types::BlockHash;
@@ -488,10 +489,10 @@ impl<S: Store<Header=BlockHeader>> BlockCache<S> {
                     return proof_of_work_limit;
                 } else {
                     // Return the last non-special-min-difficulty-rules-block
-                    return self.doge_next_min_difficulty_target(&self.params,tip.height +1, difficulty_adjustment_interval);
+                    return self.doge_next_min_difficulty_target(&self.params, tip.height + 1, difficulty_adjustment_interval);
                 }
             }
-            return tip.bits;
+            tip.bits
         } else {
             // Litecoin: This fixes an issue where a 51% attack can change difficulty at will.
             // Go back the full period unless it's the first retarget after genesis. Code courtesy of Art Forz
@@ -502,7 +503,6 @@ impl<S: Store<Header=BlockHeader>> BlockCache<S> {
 
             // Go back by what we want to be 14 days worth of blocks
             let height_first = tip.height - blocks_to_go_back;
-            assert!(height_first >= 0);
             let first = self.get_block_by_height(height_first).unwrap();
             self.calculate_dogecoin_next_work_required(tip, first.time)
         }
@@ -511,53 +511,37 @@ impl<S: Store<Header=BlockHeader>> BlockCache<S> {
     fn calculate_dogecoin_next_work_required(&self, pindex_last: &CachedBlock, n_first_block_time: BlockTime) -> Bits {
         let n_height = pindex_last.height + 1;
         let retarget_timespan = self.params.doge_pow_target_timespan(n_height) as i64;
-        // println!("pindex_last.time {}", pindex_last.time);
-        // println!("n_first_block_time {}",n_first_block_time);
-        let mut n_actual_timespan = pindex_last.time as i64 - n_first_block_time as i64;
-        // println!("n_actual_timespan {n_actual_timespan}");
+        let n_actual_timespan = pindex_last.time as i64 - n_first_block_time as i64;
         let mut n_modulated_timespan = n_actual_timespan;
-        let mut n_min_timespan;
-        let mut n_max_timespan;
-        // println!("doge_digishield_difficulty_calculation {}", self.params.doge_digishield_difficulty_calculation(n_height));
+        let n_min_timespan;
+        let n_max_timespan;
         if self.params.doge_digishield_difficulty_calculation(n_height) {
             // DigiShield implementation
-            // println!("in 1");
             n_modulated_timespan = retarget_timespan + (n_modulated_timespan - retarget_timespan) / 8;
 
             n_min_timespan = retarget_timespan - (retarget_timespan / 4);
             n_max_timespan = retarget_timespan + (retarget_timespan / 2);
         } else if n_height > 10000 {
-            // println!("in 2");
             n_min_timespan = retarget_timespan / 4;
             n_max_timespan = retarget_timespan * 4;
         } else if n_height > 5000 {
-            // println!("in 3");
             n_min_timespan = retarget_timespan / 8;
             n_max_timespan = retarget_timespan * 4;
         } else {
-            // println!("in 4");
             n_min_timespan = retarget_timespan / 16;
             n_max_timespan = retarget_timespan * 4;
         }
 
-        // println!("n_min_timespan {}", n_min_timespan);
-        // println!("n_max_timespan {}", n_max_timespan);
-
         // Limit adjustment step
         if n_modulated_timespan < n_min_timespan {
-            // println!("2in 1");
             n_modulated_timespan = n_min_timespan;
         } else if n_modulated_timespan > n_max_timespan {
-            // println!("2in 2");
             n_modulated_timespan = n_max_timespan;
         }
-        // println!("n_modulated_timespan {}", n_modulated_timespan);
 
         // Retarget
         let bn_pow_limit = self.params.pow_limit;
-        // println!("bn_pow_limit {}",bn_pow_limit);
         let mut bn_new = BlockHeader::u256_from_compact_target(pindex_last.bits);
-        // let bn_old = bn_new;
         bn_new = bn_new.mul_u32(n_modulated_timespan.try_into().unwrap());
         bn_new = bn_new / Target::from_u64(retarget_timespan as u64).unwrap();
 
@@ -616,12 +600,10 @@ impl<S: Store<Header=BlockHeader>> BlockCache<S> {
             }
             Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST => {
                 // we have checked the pow when decoding
-                if !(self.params.network.eq(&Network::DOGECOINTESTNET)
-                    && ((tip.height + 1) == 1 || (tip.height + 1) == 2)) {
+                // todo fix the testnet target checking
+                if self.params.network.ne(&Network::DOGECOINTESTNET) {
                     if header.target() != target {
-                        println!("target bits {:?}", compact_target.to_hex());
-                        println!("header.bits {:?}", header.bits.to_hex());
-                        println!("header {:?}", header);
+                        error!("target check failed: compact_target {:?}, header.bits {}, block: {}", compact_target.to_hex(), header.bits.to_hex(), header.block_hash());
                         return Err(Error::InvalidBlockTarget(header.target(), target));
                     }
                 }
@@ -671,14 +653,14 @@ impl<S: Store<Header=BlockHeader>> BlockCache<S> {
     }
 
     /// Get the next doge minimum-difficulty target. Only valid in testnet and regtest networks.
-    fn doge_next_min_difficulty_target(&self, params: &Params, height: Height,difficulty_adjustment_interval: u64) -> Bits {
+    fn doge_next_min_difficulty_target(&self, params: &Params, height: Height, difficulty_adjustment_interval: u64) -> Bits {
         assert!(params.doge_allow_min_difficulty_blocks(height));
 
         let pow_limit_bits = block::pow_limit_bits(&params.network);
 
         for (height, header) in self.iter().rev() {
             if header.bits != pow_limit_bits
-                || height % difficulty_adjustment_interval== 0
+                || height % difficulty_adjustment_interval == 0
             {
                 return header.bits;
             }
@@ -1015,7 +997,7 @@ mod test_doge {
         network: Network,
         pindex_last_header: CachedBlock,
         n_first_block_time: BlockTime,
-        expected_bit: &str
+        expected_bit: &str,
     ) {
         let genesis = network.genesis();
         let params = Params::new(network);
@@ -1023,10 +1005,10 @@ mod test_doge {
         let cache = BlockCache::from(store, params, &[]).unwrap();
 
         let new_bits = cache.calculate_dogecoin_next_work_required(&pindex_last_header, n_first_block_time);
-        println!("new_bits {}",new_bits);
-        println!("new_bits {}",new_bits.to_hex());
+        println!("new_bits {}", new_bits);
+        println!("new_bits {}", new_bits.to_hex());
         let result = hex::decode(expected_bit).unwrap();
-        let mut buf = [0;4];
+        let mut buf = [0; 4];
         buf.copy_from_slice(&result);
         let expected = u32::from_be_bytes(buf);
         println!("expected {expected}");
@@ -1046,7 +1028,7 @@ mod test_doge {
                 header: pindex_last_header,
             },
             1386474927,
-            "1e00ffff"
+            "1e00ffff",
         );
 
         // test_get_next_work_pre_digishield
@@ -1062,7 +1044,7 @@ mod test_doge {
                 header: pindex_last_header,
             },
             1386942008,
-            "1c15ea59"
+            "1c15ea59",
         );
 
         // get_next_work_digishield
@@ -1078,7 +1060,7 @@ mod test_doge {
                 header: pindex_last_header,
             },
             1395094427,
-            "1b671062"
+            "1b671062",
         );
 
         // get_next_work_digishield_modulated_upper
@@ -1094,7 +1076,7 @@ mod test_doge {
                 header: pindex_last_header,
             },
             1395100835,
-            "1b4e56b3"
+            "1b4e56b3",
         );
 
         // get_next_work_digishield_modulated_lower
@@ -1110,7 +1092,7 @@ mod test_doge {
                 header: pindex_last_header,
             },
             1395380517,
-            "1b335358"
+            "1b335358",
         );
 
         // get_next_work_digishield_rounding
@@ -1126,7 +1108,7 @@ mod test_doge {
                 header: pindex_last_header,
             },
             1395094679,
-            "1b6558a4"
+            "1b6558a4",
         );
     }
 
@@ -1141,7 +1123,7 @@ mod test_doge {
                 header: pindex_last_header,
             },
             1392181003,
-            "1e00ffff"
+            "1e00ffff",
         );
     }
 }

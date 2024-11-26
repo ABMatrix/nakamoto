@@ -214,18 +214,10 @@ impl Params {
     pub fn doge_digishield_difficulty_calculation(&self, height: Height) -> bool {
         match self.network {
             Network::DOGECOINMAINNET | Network::DOGECOINTESTNET=> {
-                if height<= 144999 {
-                    false
-                }else {
-                    true
-                }
+                height > 144999
             }
             Network::DOGECOINREGTEST => {
-                if height<= 10 {
-                    false
-                }else {
-                    true
-                }
+                height > 10
             }
             _ => unreachable!()
         }
@@ -253,10 +245,8 @@ impl Params {
             Network::DOGECOINTESTNET => {
                 if height <= 144999 {
                     true
-                }else if height <= 157499 {
-                    false
                 }else {
-                    true
+                    height > 157499
                 }
             }
             Network::DOGECOINREGTEST => {
