@@ -440,14 +440,8 @@ impl BlockHeaderAuxPow {
 
 #[cfg(test)]
 mod test {
-    use std::str::FromStr;
-    use nakamoto_chain::BlockHeader;
     use nakamoto_common::bitcoin::consensus::encode;
-    use nakamoto_common::bitcoin::util;
-    use nakamoto_common::bitcoin::util::BitArray;
-    use nakamoto_common::bitcoin::util::uint::Uint256;
-    use nakamoto_common::bitcoin_hashes::hex::{FromHex, ToHex};
-    use nakamoto_common::bitcoin_hashes::{Hash, sha256d};
+    use nakamoto_common::bitcoin_hashes::hex::FromHex;
     use nakamoto_common::network::Network;
     use crate::dogecoin_message::BlockHeaderAuxPow;
 

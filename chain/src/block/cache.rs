@@ -468,7 +468,7 @@ impl<S: Store<Header=BlockHeader>> BlockCache<S> {
 
     fn calculate_doge_compact_target(&self, tip: &CachedBlock, header: &BlockHeader) -> Bits {
         let proof_of_work_limit = block::pow_limit_bits(&self.params.network);
-        println!("proof_of_work_limit {}",proof_of_work_limit.to_hex());
+        // println!("proof_of_work_limit {}",proof_of_work_limit.to_hex());
         if self.allow_digishield_min_difficulty_for_block(tip, header) {
             return proof_of_work_limit;
         }
@@ -616,11 +616,14 @@ impl<S: Store<Header=BlockHeader>> BlockCache<S> {
             }
             Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST => {
                 // we have checked the pow when decoding
-                if header.target() != target {
-                    println!("target bits {:?}", compact_target.to_hex());
-                    println!("header.bits {:?}", header.bits.to_hex());
-                    println!("header {:?}", header);
-                    return Err(Error::InvalidBlockTarget(header.target(), target));
+                if !(self.params.network.eq(&Network::DOGECOINTESTNET)
+                    && ((tip.height + 1) == 1 || (tip.height + 1) == 2)) {
+                    if header.target() != target {
+                        println!("target bits {:?}", compact_target.to_hex());
+                        println!("header.bits {:?}", header.bits.to_hex());
+                        println!("header {:?}", header);
+                        return Err(Error::InvalidBlockTarget(header.target(), target));
+                    }
                 }
             }
         }
@@ -1124,6 +1127,21 @@ mod test_doge {
             },
             1395094679,
             "1b6558a4"
+        );
+    }
+
+    #[test]
+    fn test_doge_testnet() {
+        let header_bytes = hex::decode("02000000174ec3144dc795d1ff13712e5d829bbd06d504c1a26574190a9da0815e50cd8c517778747da783ab4dd37cb5febcd4cf850d5db67d3c3289bea0af6a8f271c4e4609fe52ffff0f1e3b770400").unwrap();
+        let pindex_last_header: BlockHeader = deserialize(&header_bytes).unwrap();
+        test_calculate_dogecoin_next_work_required(
+            Network::DOGECOINTESTNET,
+            CachedBlock {
+                height: 239,
+                header: pindex_last_header,
+            },
+            1392181003,
+            "1e00ffff"
         );
     }
 }
