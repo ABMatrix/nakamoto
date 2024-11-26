@@ -489,7 +489,7 @@ impl<S: Store<Header=BlockHeader>> BlockCache<S> {
                     return proof_of_work_limit;
                 } else {
                     // Return the last non-special-min-difficulty-rules-block
-                    return self.doge_next_min_difficulty_target(&self.params, tip.height + 1, difficulty_adjustment_interval);
+                    return self.doge_next_min_difficulty_target(&self.params, tip.height, difficulty_adjustment_interval);
                 }
             }
             tip.bits
