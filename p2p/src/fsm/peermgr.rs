@@ -201,13 +201,14 @@ impl<C: AdjustedClock<PeerId>> PeerManager<C> {
     pub fn new(config: Config, rng: fastrand::Rng, hooks: Hooks, clock: C) -> Self {
         let peers = HashMap::with_hasher(rng.clone().into());
         let disconnected = HashMap::with_hasher(rng.clone().into());
+        let outbox = Outbox::new(config.protocol_version);
 
         Self {
             config,
             last_idle: None,
             peers,
             disconnected,
-            outbox: Outbox::default(),
+            outbox,
             rng,
             hooks,
             clock,

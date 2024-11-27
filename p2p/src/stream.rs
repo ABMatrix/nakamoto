@@ -36,7 +36,9 @@ impl Decoder {
             Err(encode::Error::Io(ref err)) if err.kind() == io::ErrorKind::UnexpectedEof => {
                 Ok(None)
             }
-            Err(err) => Err(err),
+            Err(err) => {
+                Err(err)
+            }
         }
     }
 }
@@ -83,7 +85,7 @@ mod test {
             msgs[0],
             RawNetworkMessage {
                 magic: 3652501241,
-                payload: NetworkMessage::Verack
+                payload: NetworkMessage::Verack,
             }
         );
         assert_eq!(

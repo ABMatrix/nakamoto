@@ -3,7 +3,6 @@
 use std::collections::BTreeMap;
 
 use bitcoin::blockdata::block::BlockHeader;
-use bitcoin::consensus::params::Params;
 use bitcoin::hash_types::BlockHash;
 use bitcoin::util::uint::Uint256;
 
@@ -13,6 +12,7 @@ use crate::block::store;
 use crate::block::time::Clock;
 use crate::block::{Bits, BlockTime, Height, Target, Work};
 use crate::nonempty::NonEmpty;
+use crate::params::Params;
 
 /// An error related to the block tree.
 #[derive(Debug, Error)]

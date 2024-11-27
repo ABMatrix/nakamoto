@@ -10,25 +10,20 @@ pub mod test;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::ops::ControlFlow;
+use log::error;
 
-use nakamoto_common as common;
-use nakamoto_common::bitcoin;
 use nakamoto_common::bitcoin::blockdata::block::BlockHeader;
-use nakamoto_common::bitcoin::consensus::params::Params;
 use nakamoto_common::bitcoin::hash_types::BlockHash;
-use nakamoto_common::bitcoin::network::constants::Network;
 use nakamoto_common::bitcoin::util::BitArray;
+use nakamoto_common::bitcoin::Error::{BlockBadProofOfWork, BlockBadTarget};
 
 use nakamoto_common::bitcoin::util::uint::Uint256;
+use nakamoto_common::bitcoin_hashes::hex::ToHex;
 use nakamoto_common::block::tree::{self, BlockReader, BlockTree, Branch, Error, ImportResult};
-use nakamoto_common::block::{
-    self,
-    iter::Iter,
-    store::Store,
-    time::{self, Clock},
-    Bits, BlockTime, Height, Work,
-};
+use nakamoto_common::block::{self, iter::Iter, store::Store, time::{self, Clock}, Bits, BlockTime, Height, Work, Target};
+use nakamoto_common::network::Network;
 use nakamoto_common::nonempty::NonEmpty;
+use nakamoto_common::params::Params;
 
 /// A block that is being stored by the block cache.
 #[derive(Debug, Clone, Copy)]
@@ -80,7 +75,7 @@ pub struct BlockCache<S: Store> {
     store: S,
 }
 
-impl<S: Store<Header = BlockHeader>> BlockCache<S> {
+impl<S: Store<Header=BlockHeader>> BlockCache<S> {
     /// Create a new `BlockCache` from a `Store`, consensus parameters, and checkpoints.
     pub fn new(
         store: S,
@@ -152,15 +147,13 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
             let genesis = self.store.genesis().block_hash();
             println!("genesis {genesis}");
             if genesis != header.prev_blockhash {
-                println!("header {:?}",header);
+                println!("header {:?}", header);
 
-                println!("header.prev_blockhash {}",header.prev_blockhash);
+                println!("header.prev_blockhash {}", header.prev_blockhash);
 
                 return Err(Error::GenesisMismatch);
             }
-            if common::network::Network::from(self.params.network).genesis_hash() != genesis {
-                println!("genesis {}",common::network::Network::from(self.params.network).genesis_hash());
-
+            if self.params.network.genesis_hash() != genesis {
                 return Err(Error::GenesisMismatch);
             }
         }
@@ -184,7 +177,7 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
     ///
     /// Panics if the range is negative.
     ///
-    fn range(&self, range: std::ops::Range<Height>) -> impl Iterator<Item = &CachedBlock> + '_ {
+    fn range(&self, range: std::ops::Range<Height>) -> impl Iterator<Item=&CachedBlock> + '_ {
         assert!(
             range.start <= range.end,
             "BlockCache::range: range start must not be greater than range end"
@@ -247,23 +240,35 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
         //
         // We do this because it's cheap to verify and prevents flooding attacks.
         let target = header.target();
-        match header.validate_pow(&target) {
-            Ok(_) => {
-                let limit = self.params.pow_limit;
+        let limit = self.params.pow_limit;
+        match self.params.network {
+            Network::Mainnet | Network::Testnet | Network::Regtest | Network::Signet => {
+                match header.validate_pow(&target) {
+                    Ok(_) => {
+                        let limit = self.params.pow_limit;
+                        if target > limit {
+                            return Err(Error::InvalidBlockTarget(target, limit));
+                        }
+                    }
+                    Err(BlockBadProofOfWork) => {
+                        return Err(Error::InvalidBlockPoW);
+                    }
+                    Err(BlockBadTarget) => unreachable! {
+                        // The only way to get a 'bad target' error is to pass a different target
+                        // than the one specified in the header.
+                    },
+                    Err(_) => unreachable! {
+                        // We've handled all possible errors above.
+                    },
+                }
+            }
+            Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST => {
                 if target > limit {
+                    println!("target {}", target);
+                    println!("limit {}", limit);
                     return Err(Error::InvalidBlockTarget(target, limit));
                 }
             }
-            Err(bitcoin::util::Error::BlockBadProofOfWork) => {
-                return Err(Error::InvalidBlockPoW);
-            }
-            Err(bitcoin::util::Error::BlockBadTarget) => unreachable! {
-                // The only way to get a 'bad target' error is to pass a different target
-                // than the one specified in the header.
-            },
-            Err(_) => unreachable! {
-                // We've handled all possible errors above.
-            },
         }
 
         if let Some(height) = self.headers.get(&header.prev_blockhash) {
@@ -313,7 +318,9 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
                 best_branch = Some(branch);
                 best_work = added;
                 best_hash = branch.tip;
-            } else if self.params.network != Network::Bitcoin {
+            } else if self.params.network != Network::Mainnet
+                && self.params.network != Network::DOGECOINMAINNET
+            {
                 if added == best_work {
                     // Nb. We intend here to compare the hashes as integers, and pick the lowest
                     // hash as the winner. However, the `PartialEq` on `BlockHash` is implemented on
@@ -361,7 +368,7 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
                     .map(|b| (b.height, b.header))
                     .collect(),
             )
-            .expect("BlockCache::import_block: there is always at least one connected block");
+                .expect("BlockCache::import_block: there is always at least one connected block");
 
             Ok(ImportResult::TipChanged {
                 header,
@@ -443,6 +450,108 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
         Ok(())
     }
 
+    // fn doge_compact_target(&self,tip: &CachedBlock, header: &BlockHeader) -> Bits {
+    //     let proof_of_work_limit = block::pow_limit_bits(&self.params.network);
+    //
+    // }
+    //
+    fn allow_digishield_min_difficulty_for_block(&self, tip: &CachedBlock, header: &BlockHeader) -> bool {
+        if !self.params.doge_allow_min_difficulty_blocks(tip.height) {
+            return false;
+        }
+
+        if tip.height < 157500 {
+            return false;
+        }
+
+        header.time > (tip.time + self.params.doge_pow_target_timespan(tip.height) as BlockTime * 2)
+    }
+
+    fn calculate_doge_compact_target(&self, tip: &CachedBlock, header: &BlockHeader) -> Bits {
+        let proof_of_work_limit = block::pow_limit_bits(&self.params.network);
+        // println!("proof_of_work_limit {}",proof_of_work_limit.to_hex());
+        if self.allow_digishield_min_difficulty_for_block(tip, header) {
+            return proof_of_work_limit;
+        }
+
+        let difficulty_adjustment_interval = if tip.height >= 145000 {
+            1
+        } else {
+            self.params.doge_pow_target_timespan(tip.height) / self.params.pow_target_spacing
+        };
+
+        if (tip.height + 1) % difficulty_adjustment_interval != 0 {
+            if self.params.doge_allow_min_difficulty_blocks(tip.height) {
+                // Special difficulty rule for testnet:
+                // If the new block's timestamp is more than 2* 10 minutes
+                // then allow mining of a min-difficulty block.
+                if header.time > tip.time + self.params.pow_target_spacing as BlockTime * 2 {
+                    return proof_of_work_limit;
+                } else {
+                    // Return the last non-special-min-difficulty-rules-block
+                    return self.doge_next_min_difficulty_target(&self.params, tip.height, difficulty_adjustment_interval);
+                }
+            }
+            tip.bits
+        } else {
+            // Litecoin: This fixes an issue where a 51% attack can change difficulty at will.
+            // Go back the full period unless it's the first retarget after genesis. Code courtesy of Art Forz
+            let mut blocks_to_go_back = difficulty_adjustment_interval - 1;
+            if tip.height + 1 != difficulty_adjustment_interval {
+                blocks_to_go_back = difficulty_adjustment_interval
+            }
+
+            // Go back by what we want to be 14 days worth of blocks
+            let height_first = tip.height - blocks_to_go_back;
+            let first = self.get_block_by_height(height_first).unwrap();
+            self.calculate_dogecoin_next_work_required(tip, first.time)
+        }
+    }
+
+    fn calculate_dogecoin_next_work_required(&self, pindex_last: &CachedBlock, n_first_block_time: BlockTime) -> Bits {
+        let n_height = pindex_last.height + 1;
+        let retarget_timespan = self.params.doge_pow_target_timespan(n_height) as i64;
+        let n_actual_timespan = pindex_last.time as i64 - n_first_block_time as i64;
+        let mut n_modulated_timespan = n_actual_timespan;
+        let n_min_timespan;
+        let n_max_timespan;
+        if self.params.doge_digishield_difficulty_calculation(n_height) {
+            // DigiShield implementation
+            n_modulated_timespan = retarget_timespan + (n_modulated_timespan - retarget_timespan) / 8;
+
+            n_min_timespan = retarget_timespan - (retarget_timespan / 4);
+            n_max_timespan = retarget_timespan + (retarget_timespan / 2);
+        } else if n_height > 10000 {
+            n_min_timespan = retarget_timespan / 4;
+            n_max_timespan = retarget_timespan * 4;
+        } else if n_height > 5000 {
+            n_min_timespan = retarget_timespan / 8;
+            n_max_timespan = retarget_timespan * 4;
+        } else {
+            n_min_timespan = retarget_timespan / 16;
+            n_max_timespan = retarget_timespan * 4;
+        }
+
+        // Limit adjustment step
+        if n_modulated_timespan < n_min_timespan {
+            n_modulated_timespan = n_min_timespan;
+        } else if n_modulated_timespan > n_max_timespan {
+            n_modulated_timespan = n_max_timespan;
+        }
+
+        // Retarget
+        let bn_pow_limit = self.params.pow_limit;
+        let mut bn_new = BlockHeader::u256_from_compact_target(pindex_last.bits);
+        bn_new = bn_new.mul_u32(n_modulated_timespan.try_into().unwrap());
+        bn_new = bn_new / Target::from_u64(retarget_timespan as u64).unwrap();
+
+        if bn_new > bn_pow_limit {
+            bn_new = bn_pow_limit;
+        }
+
+        BlockHeader::compact_target_from_u256(&bn_new)
+    }
+
     /// Validate a block header as a potential new tip. This performs full header validation.
     fn validate(
         &self,
@@ -452,32 +561,53 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
     ) -> Result<(), Error> {
         assert_eq!(tip.hash(), header.prev_blockhash);
 
-        let compact_target = if self.params.allow_min_difficulty_blocks
-            && (tip.height + 1) % self.params.difficulty_adjustment_interval() != 0
-        {
-            if header.time > tip.time + self.params.pow_target_spacing as BlockTime * 2 {
-                block::pow_limit_bits(&self.params.network)
-            } else {
-                self.next_min_difficulty_target(&self.params)
+        let compact_target = match self.params.network {
+            Network::DOGECOINMAINNET | Network::DOGECOINREGTEST | Network::DOGECOINTESTNET => {
+                self.calculate_doge_compact_target(tip, header)
             }
-        } else {
-            self.next_difficulty_target(tip.height, tip.time, tip.target(), &self.params)
+            _ => {
+                if self.params.allow_min_difficulty_blocks
+                    && (tip.height + 1) % self.params.difficulty_adjustment_interval() != 0
+                {
+                    if header.time > tip.time + self.params.pow_target_spacing as BlockTime * 2 {
+                        block::pow_limit_bits(&self.params.network)
+                    } else {
+                        self.next_min_difficulty_target(&self.params)
+                    }
+                } else {
+                    self.next_difficulty_target(tip.height, tip.time, tip.target(), &self.params)
+                }
+            }
         };
-        
-        #[cfg(feature = "test")]
-        let target = BlockHeader::u256_from_compact_target(header.bits);
-        #[cfg(not(feature = "test"))]
-        let target = BlockHeader::u256_from_compact_target(compact_target);
 
-        match header.validate_pow(&target) {
-            Err(bitcoin::util::Error::BlockBadProofOfWork) => {
-                return Err(Error::InvalidBlockPoW);
+        #[cfg(feature = "test")]
+            let target = BlockHeader::u256_from_compact_target(header.bits);
+        #[cfg(not(feature = "test"))]
+            let target = BlockHeader::u256_from_compact_target(compact_target);
+
+        match self.params.network {
+            Network::Mainnet | Network::Testnet | Network::Regtest | Network::Signet => {
+                match header.validate_pow(&target) {
+                    Err(BlockBadProofOfWork) => {
+                        return Err(Error::InvalidBlockPoW);
+                    }
+                    Err(BlockBadTarget) => {
+                        return Err(Error::InvalidBlockTarget(header.target(), target));
+                    }
+                    Err(_) => unreachable!(),
+                    Ok(_) => {}
+                }
             }
-            Err(bitcoin::util::Error::BlockBadTarget) => {
-                return Err(Error::InvalidBlockTarget(header.target(), target));
+            Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST => {
+                // we have checked the pow when decoding
+                // todo fix the testnet target checking
+                if self.params.network.ne(&Network::DOGECOINTESTNET) {
+                    if header.target() != target {
+                        error!("target check failed: compact_target {:?}, header.bits {}, block: {}", compact_target.to_hex(), header.bits.to_hex(), header.block_hash());
+                        return Err(Error::InvalidBlockTarget(header.target(), target));
+                    }
+                }
             }
-            Err(_) => unreachable!(),
-            Ok(_) => {}
         }
 
         // Validate against block checkpoints.
@@ -515,6 +645,22 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
         for (height, header) in self.iter().rev() {
             if header.bits != pow_limit_bits
                 || height % self.params.difficulty_adjustment_interval() == 0
+            {
+                return header.bits;
+            }
+        }
+        pow_limit_bits
+    }
+
+    /// Get the next doge minimum-difficulty target. Only valid in testnet and regtest networks.
+    fn doge_next_min_difficulty_target(&self, params: &Params, height: Height, difficulty_adjustment_interval: u64) -> Bits {
+        assert!(params.doge_allow_min_difficulty_blocks(height));
+
+        let pow_limit_bits = block::pow_limit_bits(&params.network);
+
+        for (height, header) in self.iter().rev() {
+            if header.bits != pow_limit_bits
+                || height % difficulty_adjustment_interval == 0
             {
                 return header.bits;
             }
@@ -570,9 +716,9 @@ impl<S: Store<Header = BlockHeader>> BlockCache<S> {
     }
 }
 
-impl<S: Store<Header = BlockHeader>> BlockTree for BlockCache<S> {
+impl<S: Store<Header=BlockHeader>> BlockTree for BlockCache<S> {
     /// Import blocks into the block tree. Blocks imported this way don't have to form a chain.
-    fn import_blocks<I: Iterator<Item = BlockHeader>, C: Clock>(
+    fn import_blocks<I: Iterator<Item=BlockHeader>, C: Clock>(
         &mut self,
         chain: I,
         context: &C,
@@ -587,12 +733,12 @@ impl<S: Store<Header = BlockHeader>> BlockTree for BlockCache<S> {
         for (i, header) in chain.enumerate() {
             match self.import_block(header, context) {
                 Ok(ImportResult::TipChanged {
-                    header,
-                    hash,
-                    height,
-                    reverted: r,
-                    connected: c,
-                }) => {
+                       header,
+                       hash,
+                       height,
+                       reverted: r,
+                       connected: c,
+                   }) => {
                     seen.extend(c.iter().map(|(_, h)| h.block_hash()));
                     reverted.extend(r.into_iter().map(|(i, h)| ((i, h.block_hash()), h)));
                     connected.extend(c);
@@ -662,7 +808,7 @@ impl<S: Store<Header = BlockHeader>> BlockTree for BlockCache<S> {
     }
 }
 
-impl<S: Store<Header = BlockHeader>> BlockReader for BlockCache<S> {
+impl<S: Store<Header=BlockHeader>> BlockReader for BlockCache<S> {
     /// Get a block by hash. Only searches the active chain.
     fn get_block(&self, hash: &BlockHash) -> Option<(Height, &BlockHeader)> {
         self.headers
@@ -686,11 +832,11 @@ impl<S: Store<Header = BlockHeader>> BlockReader for BlockCache<S> {
 
         // Since it's not in the active chain, check stale blocks.
         if let Some(Candidate {
-            fork_height,
-            fork_header,
-            headers,
-            ..
-        }) = self.fork(to)
+                        fork_height,
+                        fork_header,
+                        headers,
+                        ..
+                    }) = self.fork(to)
         {
             Some((fork_height, NonEmpty::from((fork_header, headers))))
         } else {
@@ -714,7 +860,7 @@ impl<S: Store<Header = BlockHeader>> BlockReader for BlockCache<S> {
     }
 
     /// Iterate over the longest chain, starting from genesis.
-    fn iter<'a>(&'a self) -> Box<dyn DoubleEndedIterator<Item = (Height, BlockHeader)> + 'a> {
+    fn iter<'a>(&'a self) -> Box<dyn DoubleEndedIterator<Item=(Height, BlockHeader)> + 'a> {
         Box::new(Iter::new(&self.chain).map(|(i, h)| (i, h.header)))
     }
 
@@ -722,7 +868,7 @@ impl<S: Store<Header = BlockHeader>> BlockReader for BlockCache<S> {
     fn range<'a>(
         &'a self,
         range: std::ops::Range<Height>,
-    ) -> Box<dyn Iterator<Item = (Height, BlockHash)> + 'a> {
+    ) -> Box<dyn Iterator<Item=(Height, BlockHash)> + 'a> {
         Box::new(
             self.chain
                 .iter()
@@ -832,5 +978,152 @@ impl<S: Store<Header = BlockHeader>> BlockReader for BlockCache<S> {
             }
         }
         hashes
+    }
+}
+
+#[cfg(test)]
+mod test_doge {
+    use nakamoto_common::bitcoin::BlockHeader;
+    use nakamoto_common::network::Network;
+    use nakamoto_common::params::Params;
+    use crate::cache::{BlockCache, CachedBlock};
+    use nakamoto_common::bitcoin::consensus::deserialize;
+    use nakamoto_common::bitcoin_hashes::hex::ToHex;
+    use nakamoto_common::block::{Bits, BlockTime, Height};
+    use nakamoto_common::nonempty::NonEmpty;
+    use crate::store;
+
+    fn test_calculate_dogecoin_next_work_required(
+        network: Network,
+        pindex_last_header: CachedBlock,
+        n_first_block_time: BlockTime,
+        expected_bit: &str,
+    ) {
+        let genesis = network.genesis();
+        let params = Params::new(network);
+        let store = store::Memory::new(NonEmpty::new(genesis));
+        let cache = BlockCache::from(store, params, &[]).unwrap();
+
+        let new_bits = cache.calculate_dogecoin_next_work_required(&pindex_last_header, n_first_block_time);
+        println!("new_bits {}", new_bits);
+        println!("new_bits {}", new_bits.to_hex());
+        let result = hex::decode(expected_bit).unwrap();
+        let mut buf = [0; 4];
+        buf.copy_from_slice(&result);
+        let expected = u32::from_be_bytes(buf);
+        println!("expected {expected}");
+        assert_eq!(new_bits, expected)
+    }
+
+    #[test]
+    fn test_cal_doge_target() {
+        //get_next_work_difficulty_limit
+        println!("get_next_work_difficulty_limit");
+        let header_bytes = hex::decode("010000006c1d7587f53e1a90a2e05a7c7757e75a4d0ec971f6c885f5f780b546500cf4048f5d12df35bbf5906a36f9169f49e5907d747a049f01b944c478243702d3e17c76f0a352f0ff0f1e000244ec").unwrap();
+        let pindex_last_header: BlockHeader = deserialize(&header_bytes).unwrap();
+        test_calculate_dogecoin_next_work_required(
+            Network::DOGECOINMAINNET,
+            CachedBlock {
+                height: 239,
+                header: pindex_last_header,
+            },
+            1386474927,
+            "1e00ffff",
+        );
+
+        // test_get_next_work_pre_digishield
+        println!();
+        println!();
+        println!("test_get_next_work_pre_digishield");
+        let header_bytes = hex::decode("0100000011eb3fb946eaa19c8a321ebe21afb59f3fb052e9a56df68f4dad837ce05780da0735480f6ec6b3582d42cd081bcaf5d9b3fc764e7a9343c10de515307ae90fdc813dab5206121a1c00f95ce3").unwrap();
+        let pindex_last_header: BlockHeader = deserialize(&header_bytes).unwrap();
+        test_calculate_dogecoin_next_work_required(
+            Network::DOGECOINMAINNET,
+            CachedBlock {
+                height: 9599,
+                header: pindex_last_header,
+            },
+            1386942008,
+            "1c15ea59",
+        );
+
+        // get_next_work_digishield
+        println!();
+        println!();
+        println!("get_next_work_digishield");
+        let header_bytes = hex::decode("0200000058054081d6f4a30d6976ac03be7e3890f67fd8331613bb7ab95eb4b40d389a91339c41b140270652190c0ae3c31f8dbd400719b2ebe1cf8858a75ad6dc14663197742753fd9d491b00299347").unwrap();
+        let pindex_last_header: BlockHeader = deserialize(&header_bytes).unwrap();
+        test_calculate_dogecoin_next_work_required(
+            Network::DOGECOINMAINNET,
+            CachedBlock {
+                height: 145000,
+                header: pindex_last_header,
+            },
+            1395094427,
+            "1b671062",
+        );
+
+        // get_next_work_digishield_modulated_upper
+        println!();
+        println!();
+        println!("get_next_work_digishield_modulated_upper");
+        let header_bytes = hex::decode("020000007d373ddbd6ae5eafec37346a1b2253d9e04e02e36aa5567bf7985aac929b610612c8bec8263ef9f06b50ece2fc3747892526369fdf45cf76d7b92e735221477db08e2753cd39341b00250bce").unwrap();
+        let pindex_last_header: BlockHeader = deserialize(&header_bytes).unwrap();
+        test_calculate_dogecoin_next_work_required(
+            Network::DOGECOINMAINNET,
+            CachedBlock {
+                height: 145107,
+                header: pindex_last_header,
+            },
+            1395100835,
+            "1b4e56b3",
+        );
+
+        // get_next_work_digishield_modulated_lower
+        println!();
+        println!();
+        println!("get_next_work_digishield_modulated_lower");
+        let header_bytes = hex::decode("02000000335fb627c94002c46c8b9ca16b6835c1343c465390ddd87dbf25c134e8a662a27c597ea423e807c40ab788c294a75ef6bb515dd369f86fa3e8786cf7e16abeb2dfd02b53216f441b002fa9b9").unwrap();
+        let pindex_last_header: BlockHeader = deserialize(&header_bytes).unwrap();
+        test_calculate_dogecoin_next_work_required(
+            Network::DOGECOINMAINNET,
+            CachedBlock {
+                height: 149423,
+                header: pindex_last_header,
+            },
+            1395380517,
+            "1b335358",
+        );
+
+        // get_next_work_digishield_rounding
+        println!();
+        println!();
+        println!("get_next_work_digishield_rounding");
+        let header_bytes = hex::decode("0200000072de7b9bffdf6da71f07394a7d0859de1d3366a214328d82925c7c0de7ca47ccc423aa06735181ced11e841d8cd0fb55abe09948625db95698f54e3ec78d73b3c77427536210671b00cafd9b").unwrap();
+        let pindex_last_header: BlockHeader = deserialize(&header_bytes).unwrap();
+        test_calculate_dogecoin_next_work_required(
+            Network::DOGECOINMAINNET,
+            CachedBlock {
+                height: 145001,
+                header: pindex_last_header,
+            },
+            1395094679,
+            "1b6558a4",
+        );
+    }
+
+    #[test]
+    fn test_doge_testnet() {
+        let header_bytes = hex::decode("02000000174ec3144dc795d1ff13712e5d829bbd06d504c1a26574190a9da0815e50cd8c517778747da783ab4dd37cb5febcd4cf850d5db67d3c3289bea0af6a8f271c4e4609fe52ffff0f1e3b770400").unwrap();
+        let pindex_last_header: BlockHeader = deserialize(&header_bytes).unwrap();
+        test_calculate_dogecoin_next_work_required(
+            Network::DOGECOINTESTNET,
+            CachedBlock {
+                height: 239,
+                header: pindex_last_header,
+            },
+            1392181003,
+            "1e00ffff",
+        );
     }
 }

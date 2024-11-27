@@ -28,9 +28,11 @@ use nakamoto_common::bitcoin::{Block, BlockHash, Transaction, Txid, Wtxid};
 // TODO: Timeout should be configurable
 // TODO: Add exponential back-off
 
+use crate::fsm::{DOGECOIN_PROTOCOL_VERSION, PROTOCOL_VERSION};
 use nakamoto_common::block::time::{Clock, LocalDuration, LocalTime};
 use nakamoto_common::block::tree::BlockReader;
 use nakamoto_common::collections::{AddressBook, HashMap};
+use nakamoto_common::network::Network;
 
 use super::fees::FeeEstimator;
 use super::output::{Io, Outbox};
@@ -127,7 +129,17 @@ impl<C> Iterator for InventoryManager<C> {
 
 impl<C: Clock> InventoryManager<C> {
     /// Create a new inventory manager.
-    pub fn new(rng: fastrand::Rng, clock: C) -> Self {
+    pub fn new(rng: fastrand::Rng, clock: C, network: Network) -> Self {
+        let protocol_version = match network {
+            Network::Mainnet | Network::Testnet | Network::Regtest | Network::Signet => {
+                PROTOCOL_VERSION
+            }
+            Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST => {
+                DOGECOIN_PROTOCOL_VERSION
+            }
+        };
+        let outbox = Outbox::new(protocol_version);
+
         Self {
             peers: AddressBook::new(rng.clone()),
             mempool: BTreeMap::new(),
@@ -138,7 +150,7 @@ impl<C: Clock> InventoryManager<C> {
             timeout: REBROADCAST_TIMEOUT,
             last_tick: None,
             rng,
-            outbox: Outbox::default(),
+            outbox,
             clock,
         }
     }
@@ -556,7 +568,7 @@ mod tests {
         let inv = vec![Inventory::Block(hash)];
         let block = chain.iter().find(|b| b.block_hash() == hash).unwrap();
 
-        let mut invmgr = InventoryManager::new(rng.clone(), clock.clone());
+        let mut invmgr = InventoryManager::new(rng.clone(), clock.clone(), network);
 
         invmgr.peer_negotiated(
             ([66, 66, 66, 66], 8333).into(),
@@ -648,7 +660,7 @@ mod tests {
         let clock = RefClock::from(LocalTime::now());
         let tx = gen::transaction(&mut rng);
 
-        let mut invmgr = InventoryManager::new(rng, clock.clone());
+        let mut invmgr = InventoryManager::new(rng, clock.clone(), network);
 
         invmgr.peer_negotiated(remote, ServiceFlags::NETWORK, true, false);
         invmgr.announce(tx);
@@ -688,7 +700,7 @@ mod tests {
         let remote: net::SocketAddr = ([88, 88, 88, 88], 8333).into();
         let tx = gen::transaction(&mut rng);
 
-        let mut invmgr = InventoryManager::new(rng, clock.clone());
+        let mut invmgr = InventoryManager::new(rng, clock.clone(), network);
 
         invmgr.peer_negotiated(remote, ServiceFlags::NETWORK, true, false);
         invmgr.announce(tx.clone());
@@ -735,7 +747,7 @@ mod tests {
         let time = LocalTime::now();
 
         let mut tree = model::Cache::from(headers);
-        let mut invmgr = InventoryManager::new(rng, time);
+        let mut invmgr = InventoryManager::new(rng, time, network);
 
         invmgr.peer_negotiated(remote, ServiceFlags::NETWORK, true, false);
         invmgr.announce(tx.clone());
@@ -796,7 +808,7 @@ mod tests {
         let remote2: net::SocketAddr = ([88, 88, 88, 89], 8333).into();
         let tx = gen::transaction(&mut rng);
 
-        let mut invmgr = InventoryManager::new(rng, time);
+        let mut invmgr = InventoryManager::new(rng, time, network);
 
         invmgr.peer_negotiated(remote, ServiceFlags::NETWORK, true, true);
         invmgr.announce(tx);
@@ -832,7 +844,7 @@ mod tests {
         let remote: net::SocketAddr = ([88, 88, 88, 88], 8333).into();
         let tx = gen::transaction(&mut rng);
 
-        let mut invmgr = InventoryManager::new(rng, LocalTime::now());
+        let mut invmgr = InventoryManager::new(rng, LocalTime::now(), Network::Regtest);
 
         invmgr.peer_negotiated(remote, ServiceFlags::NETWORK, true, true);
         invmgr.announce(tx.clone());

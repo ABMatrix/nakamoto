@@ -4,6 +4,7 @@
 #![warn(missing_docs)]
 use std::net;
 
+use crate::fsm::{DOGECOIN_PROTOCOL_VERSION, PROTOCOL_VERSION};
 use nakamoto_common::bitcoin::network::address::Address;
 use nakamoto_common::bitcoin::network::constants::ServiceFlags;
 use nakamoto_common::bitcoin::network::message::NetworkMessage;
@@ -11,6 +12,7 @@ use nakamoto_common::block::time::Clock;
 use nakamoto_common::block::time::{LocalDuration, LocalTime};
 use nakamoto_common::block::BlockTime;
 use nakamoto_common::collections::{HashMap, HashSet};
+use nakamoto_common::network::Network;
 use nakamoto_common::p2p::peer::{AddressSource, KnownAddress, Source, Store};
 use nakamoto_common::p2p::Domain;
 use nakamoto_net::Disconnect;
@@ -298,8 +300,19 @@ impl<P: Store, C: Clock> AddressManager<P, C> {
 
 impl<P: Store, C: Clock> AddressManager<P, C> {
     /// Create a new, empty address manager.
-    pub fn new(cfg: Config, rng: fastrand::Rng, peers: P, clock: C) -> Self {
+    pub fn new(cfg: Config, rng: fastrand::Rng, peers: P, clock: C, network: Network) -> Self {
         let ips = peers.iter().map(|(ip, _)| *ip).collect::<Vec<_>>();
+
+        let protocol_version = match network {
+            Network::Mainnet | Network::Testnet | Network::Regtest | Network::Signet => {
+                PROTOCOL_VERSION
+            }
+            Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST => {
+                DOGECOIN_PROTOCOL_VERSION
+            }
+        };
+        let outbox = Outbox::new(protocol_version);
+
         let mut addrmgr = Self {
             cfg,
             peers,
@@ -310,7 +323,7 @@ impl<P: Store, C: Clock> AddressManager<P, C> {
             local_addrs: HashSet::with_hasher(rng.clone().into()),
             last_request: None,
             last_idle: None,
-            outbox: Outbox::default(),
+            outbox,
             rng,
             clock,
         };
@@ -670,6 +683,7 @@ mod tests {
             fastrand::Rng::new(),
             HashMap::new(),
             LocalTime::now(),
+            Network::Regtest,
         );
 
         assert!(addrmgr.sample(ServiceFlags::NONE).is_none());
@@ -683,6 +697,7 @@ mod tests {
             fastrand::Rng::new(),
             HashMap::new(),
             time,
+            Network::Regtest,
         );
         let source = Source::Dns;
         let services = ServiceFlags::NETWORK;
@@ -761,6 +776,7 @@ mod tests {
             fastrand::Rng::new(),
             HashMap::new(),
             time,
+            Network::Regtest,
         );
         let source = Source::Dns;
         let services = ServiceFlags::NETWORK;
@@ -835,6 +851,7 @@ mod tests {
             fastrand::Rng::new(),
             HashMap::new(),
             time,
+            Network::Regtest,
         );
         let source = Source::Dns;
         let services = ServiceFlags::NETWORK;
@@ -878,6 +895,7 @@ mod tests {
             fastrand::Rng::with_seed(seed),
             HashMap::new(),
             clock,
+            Network::Regtest,
         );
         let time = LocalTime::now();
         let services = ServiceFlags::NETWORK;
@@ -923,6 +941,7 @@ mod tests {
             fastrand::Rng::new(),
             HashMap::new(),
             time,
+            Network::Regtest,
         );
         addrmgr.initialize();
 
@@ -985,7 +1004,13 @@ mod tests {
 
         let cfg = Config::default();
         let time = LocalTime::now();
-        let mut addrmgr = AddressManager::new(cfg, fastrand::Rng::new(), HashMap::new(), time);
+        let mut addrmgr = AddressManager::new(
+            cfg,
+            fastrand::Rng::new(),
+            HashMap::new(),
+            time,
+            Network::Regtest,
+        );
 
         addrmgr.initialize();
         addrmgr.insert(
@@ -1039,8 +1064,13 @@ mod tests {
 
         let cfg = Config::default();
         let clock = RefClock::from(LocalTime::now());
-        let mut addrmgr =
-            AddressManager::new(cfg, fastrand::Rng::new(), HashMap::new(), clock.clone());
+        let mut addrmgr = AddressManager::new(
+            cfg,
+            fastrand::Rng::new(),
+            HashMap::new(),
+            clock.clone(),
+            Network::Regtest,
+        );
 
         addrmgr.initialize();
 

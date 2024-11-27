@@ -7,6 +7,7 @@ pub mod store;
 pub mod time;
 pub mod tree;
 
+use crate::network::Network;
 pub use bitcoin::blockdata::block::{Block, BlockHeader};
 pub use bitcoin::blockdata::transaction::Transaction;
 pub use bitcoin::hash_types::BlockHash;
@@ -56,11 +57,14 @@ pub fn locators_indexes(mut from: Height) -> Vec<Height> {
 }
 
 /// Get the proof-of-work limit for the network, in bits.
-pub fn pow_limit_bits(network: &bitcoin::Network) -> Bits {
+pub fn pow_limit_bits(network: &Network) -> Bits {
     match network {
-        bitcoin::Network::Bitcoin => 0x1d00ffff,
-        bitcoin::Network::Testnet => 0x1d00ffff,
-        bitcoin::Network::Regtest => 0x207fffff,
-        bitcoin::Network::Signet => 0x1e0377ae,
+        Network::Mainnet => 0x1d00ffff,
+        Network::Testnet => 0x1d00ffff,
+        Network::Regtest => 0x207fffff,
+        Network::Signet => 0x1e0377ae,
+        Network::DOGECOINMAINNET => 0x1e0ffff0,
+        Network::DOGECOINTESTNET => 0x1e0ffff0,
+        Network::DOGECOINREGTEST => 0x207fffff,
     }
 }

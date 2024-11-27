@@ -5,11 +5,13 @@ pub mod block;
 pub mod collections;
 pub mod network;
 pub mod p2p;
+pub mod params;
 
 pub use bitcoin;
 pub use bitcoin_hashes;
 pub use nakamoto_net as net;
 pub use nonempty;
+pub use scrypt;
 
 /// Return the function path at the current source location.
 #[macro_export]

@@ -39,7 +39,6 @@ use std::sync::Arc;
 
 use nakamoto_common::bitcoin::blockdata::block::BlockHeader;
 use nakamoto_common::bitcoin::consensus::encode;
-use nakamoto_common::bitcoin::consensus::params::Params;
 use nakamoto_common::bitcoin::network::constants::ServiceFlags;
 use nakamoto_common::bitcoin::network::message::{NetworkMessage, RawNetworkMessage};
 use nakamoto_common::bitcoin::network::message_blockdata::Inventory;
@@ -63,6 +62,8 @@ use thiserror::Error;
 
 /// Peer-to-peer protocol version.
 pub const PROTOCOL_VERSION: u32 = 70016;
+/// DogeCoin Peer-to-peer protocol version.
+pub const DOGECOIN_PROTOCOL_VERSION: u32 = 70015;
 /// Minimum supported peer protocol version.
 /// This version includes support for the `sendheaders` feature.
 pub const MIN_PROTOCOL_VERSION: u32 = 70012;
@@ -292,6 +293,8 @@ pub enum CommandError {
 }
 
 pub use cbfmgr::GetFiltersError;
+use nakamoto_common::network::Network;
+use nakamoto_common::params::Params;
 
 /// Holds functions that are used to hook into or alter protocol behavior.
 #[derive(Clone)]
@@ -412,8 +415,8 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            network: network::Network::default(),
-            params: Params::new(network::Network::default().into()),
+            network: Network::default(),
+            params: Params::new(Network::default()),
             connect: Vec::new(),
             domains: Domain::all(),
             services: ServiceFlags::NONE,
@@ -430,15 +433,22 @@ impl Default for Config {
 
 impl Config {
     /// Construct a new configuration.
-    pub fn from(network: network::Network, connect: Vec<net::SocketAddr>) -> Self {
-        let params = Params::new(network.into());
+    pub fn from(network: Network, connect: Vec<net::SocketAddr>) -> Self {
+        let params = Params::new(network);
 
-        Self {
+        let mut config = Self {
             network,
             connect,
             params,
             ..Self::default()
+        };
+        match network {
+            Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST=> {
+                config.protocol_version = DOGECOIN_PROTOCOL_VERSION
+            }
+            _ => {}
         }
+        config
     }
 
     /// Get the listen port.
@@ -496,8 +506,9 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> StateMa
             },
             rng.clone(),
             clock.clone(),
+            protocol_version
         );
-        let pingmgr = PingManager::new(ping_timeout, rng.clone(), clock.clone());
+        let pingmgr = PingManager::new(ping_timeout, rng.clone(), clock.clone(), config.network);
         let cbfmgr = FilterManager::new(
             cbfmgr::Config {
                 filter_cache_size: limits.filter_cache_size,
@@ -506,10 +517,12 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> StateMa
             rng.clone(),
             filters,
             clock.clone(),
+            config.network,
         );
+
         let peermgr = PeerManager::new(
             peermgr::Config {
-                protocol_version: PROTOCOL_VERSION,
+                protocol_version,
                 whitelist,
                 persistent: connect,
                 domains: domains.clone(),
@@ -534,8 +547,9 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> StateMa
             rng.clone(),
             peers,
             clock.clone(),
+            config.network,
         );
-        let invmgr = InventoryManager::new(rng, clock.clone());
+        let invmgr = InventoryManager::new(rng, clock.clone(), config.network);
 
         Self {
             tree,
@@ -577,6 +591,11 @@ impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<PeerId>> StateMa
             }
         }
         peers
+    }
+
+    /// Get the StateMachine's network
+    pub fn network(&self) -> Network {
+        self.network
     }
 }
 

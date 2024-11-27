@@ -1,7 +1,6 @@
 //!
 //! Manages header synchronization with peers.
 //!
-use nakamoto_common::bitcoin::consensus::params::Params;
 use nakamoto_common::bitcoin::network::constants::ServiceFlags;
 use nakamoto_common::bitcoin::network::message::NetworkMessage;
 use nakamoto_common::bitcoin::network::message_blockdata::{GetHeadersMessage, Inventory};
@@ -11,6 +10,7 @@ use nakamoto_common::block::tree::{BlockReader, BlockTree, Error, ImportResult};
 use nakamoto_common::block::{BlockHash, BlockHeader, Height};
 use nakamoto_common::collections::{AddressBook, HashMap};
 use nakamoto_common::nonempty::NonEmpty;
+use nakamoto_common::params::Params;
 
 use super::output::{Io, Outbox};
 use super::Event;
@@ -111,13 +111,13 @@ struct GetHeaders {
 
 impl<C: Clock> SyncManager<C> {
     /// Create a new sync manager.
-    pub fn new(config: Config, rng: fastrand::Rng, clock: C) -> Self {
+    pub fn new(config: Config, rng: fastrand::Rng, clock: C, protocol_version: u32) -> Self {
         let peers = AddressBook::new(rng.clone());
         let last_tip_update = None;
         let last_peer_sample = None;
         let last_idle = None;
         let inflight = HashMap::with_hasher(rng.into());
-        let outbox = Outbox::default();
+        let outbox = Outbox::new(protocol_version);
 
         Self {
             peers,
@@ -201,7 +201,6 @@ impl<C: Clock> SyncManager<C> {
         if link.is_outbound() && !services.has(REQUIRED_SERVICES) {
             return;
         }
-
         if height > self.best_height().unwrap_or_else(|| tree.height()) {
             self.outbox.event(Event::PeerHeightUpdated { height });
         }

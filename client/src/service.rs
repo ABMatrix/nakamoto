@@ -14,6 +14,9 @@ use crate::client::Config;
 use crate::peer;
 use nakamoto_common::block::filter;
 use nakamoto_common::block::filter::Filters;
+use nakamoto_common::network::Network;
+use nakamoto_p2p::dogecoin_message::DogeCoinRawNetworkMessage;
+use nakamoto_p2p::fsm::DOGECOIN_PROTOCOL_VERSION;
 
 /// Client service. Wraps a state machine and handles decoding and encoding of network messages.
 pub struct Service<T, F, P, C> {
@@ -22,7 +25,7 @@ pub struct Service<T, F, P, C> {
 }
 
 impl<T: BlockTree, F: filter::Filters, P: peer::Store, C: AdjustedClock<net::SocketAddr>>
-    Service<T, F, P, C>
+Service<T, F, P, C>
 {
     /// Create a new client service.
     pub fn new(
@@ -33,6 +36,14 @@ impl<T: BlockTree, F: filter::Filters, P: peer::Store, C: AdjustedClock<net::Soc
         rng: fastrand::Rng,
         config: Config,
     ) -> Self {
+        let mut default_p2p_conf = p2p::Config::default();
+        match config.network {
+            Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST => {
+                default_p2p_conf.protocol_version = DOGECOIN_PROTOCOL_VERSION;
+            }
+            _ => {}
+        }
+
         Self {
             inboxes: HashMap::new(),
             machine: p2p::StateMachine::new(
@@ -50,7 +61,7 @@ impl<T: BlockTree, F: filter::Filters, P: peer::Store, C: AdjustedClock<net::Soc
                     limits: config.limits,
                     services: config.services,
 
-                    ..p2p::Config::default()
+                    ..default_p2p_conf
                 },
             ),
         }
@@ -58,11 +69,11 @@ impl<T: BlockTree, F: filter::Filters, P: peer::Store, C: AdjustedClock<net::Soc
 }
 
 impl<T, F, P, C> nakamoto_net::Service for Service<T, F, P, C>
-where
-    T: BlockTree,
-    F: filter::Filters,
-    P: peer::Store,
-    C: AdjustedClock<net::SocketAddr>,
+    where
+        T: BlockTree,
+        F: filter::Filters,
+        P: peer::Store,
+        C: AdjustedClock<net::SocketAddr>,
 {
     type Command = p2p::Command;
 
@@ -73,11 +84,11 @@ where
 }
 
 impl<T, F, P, C> StateMachine for Service<T, F, P, C>
-where
-    T: BlockTree,
-    F: filter::Filters,
-    P: peer::Store,
-    C: AdjustedClock<net::SocketAddr>,
+    where
+        T: BlockTree,
+        F: filter::Filters,
+        P: peer::Store,
+        C: AdjustedClock<net::SocketAddr>,
 {
     type Message = [u8];
     type Event = p2p::Event;
@@ -98,19 +109,39 @@ where
     fn message_received(&mut self, addr: &net::SocketAddr, bytes: Cow<[u8]>) {
         if let Some(inbox) = self.inboxes.get_mut(addr) {
             inbox.input(bytes.borrow());
+            match self.machine.network() {
+                Network::Mainnet | Network::Testnet | Network::Regtest | Network::Signet=> {
+                    loop {
+                        match inbox.decode_next() {
+                            Ok(Some(msg)) => self.machine.message_received(addr, Cow::Owned(msg)),
+                            Ok(None) => break,
 
-            loop {
-                match inbox.decode_next() {
-                    Ok(Some(msg)) => self.machine.message_received(addr, Cow::Owned(msg)),
-                    Ok(None) => break,
+                            Err(err) => {
+                                log::error!("Invalid message received from {}: {}", addr, err);
 
-                    Err(err) => {
-                        log::error!("Invalid message received from {}: {}", addr, err);
+                                self.machine
+                                    .disconnect(*addr, p2p::DisconnectReason::DecodeError(Arc::new(err)));
 
-                        self.machine
-                            .disconnect(*addr, p2p::DisconnectReason::DecodeError(Arc::new(err)));
+                                return;
+                            }
+                        }
+                    }
+                }
+                Network::DOGECOINMAINNET | Network::DOGECOINTESTNET | Network::DOGECOINREGTEST=> {
+                    loop {
+                        match inbox.decode_next::<DogeCoinRawNetworkMessage>() {
+                            Ok(Some(msg)) => self.machine.message_received(addr, Cow::Owned(msg.into())),
+                            Ok(None) => break,
 
-                        return;
+                            Err(err) => {
+                                log::error!("Invalid message received from {}: {}", addr, err);
+
+                                self.machine
+                                    .disconnect(*addr, p2p::DisconnectReason::DecodeError(Arc::new(err)));
+
+                                return;
+                            }
+                        }
                     }
                 }
             }
@@ -135,7 +166,7 @@ where
 }
 
 impl<T: BlockTree, F: Filters, P: peer::Store, C: AdjustedClock<p2p::PeerId>> Iterator
-    for Service<T, F, P, C>
+for Service<T, F, P, C>
 {
     type Item = Io<Vec<u8>, p2p::Event, p2p::DisconnectReason>;
 

@@ -25,7 +25,7 @@ use nakamoto_common::bitcoin::network::message::NetworkMessage;
 use nakamoto_common::bitcoin::network::Address;
 use nakamoto_common::bitcoin::util::uint::Uint256;
 use nakamoto_common::bitcoin::Txid;
-use nakamoto_common::block::store::{Genesis as _, Store as _};
+use nakamoto_common::block::store::Genesis as _;
 use nakamoto_common::block::time::{AdjustedTime, RefClock};
 use nakamoto_common::block::tree::{self, BlockReader, ImportResult};
 use nakamoto_common::block::{BlockHash, BlockHeader, Height, Transaction};
@@ -273,7 +273,7 @@ impl<R: Reactor> Client<R> {
 
         log::info!(target: "client", "Initializing client ({:?})..", network);
         log::info!(target: "client", "Genesis block hash is {}", network.genesis_hash());
-        
+
         let seal = config.clone().seal;
         let (path, seal) = if seal.is_some() {
             let sealkey = seal.unwrap();
@@ -281,8 +281,8 @@ impl<R: Reactor> Client<R> {
                 return Err(Error::BadSealKeylen);
             }
             (dir.join("headers-seal.db"), sealkey)
-        }else {
-            (dir.join("headers.db"), vec![8u8;32])
+        } else {
+            (dir.join("headers.db"), vec![8u8; 32])
         };
 
         let store = match store::SealFile::create(&path, genesis, seal.clone()) {
@@ -319,7 +319,11 @@ impl<R: Reactor> Client<R> {
 
         let cfheaders_genesis = filter::cache::StoredHeader::genesis(network);
         let cfheaders_path = dir.join("filters.db");
-        let cfheaders_store = match store::SealFile::create(&cfheaders_path, cfheaders_genesis, seal.clone()) {
+        let cfheaders_store = match store::SealFile::create(
+            &cfheaders_path,
+            cfheaders_genesis,
+            seal.clone(),
+        ) {
             Ok(store) => {
                 log::info!(target: "client", "Initializing new filter header store {:?}", cfheaders_path);
                 store
