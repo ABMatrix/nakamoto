@@ -239,7 +239,12 @@ impl<S: Store<Header=BlockHeader>> BlockCache<S> {
         // is greater than the minimum allowed for this network.
         //
         // We do this because it's cheap to verify and prevents flooding attacks.
+        //let target = header.target();
+        #[cfg(feature = "test")]
+        let target = BlockHeader::u256_from_compact_target(header.bits);
+        #[cfg(not(feature = "test"))]
         let target = header.target();
+        
         let limit = self.params.pow_limit;
         match self.params.network {
             Network::Mainnet | Network::Testnet | Network::Regtest | Network::Signet => {
@@ -247,10 +252,12 @@ impl<S: Store<Header=BlockHeader>> BlockCache<S> {
                     Ok(_) => {
                         let limit = self.params.pow_limit;
                         if target > limit {
+                            error!("btc InvalidBlockTarget target{target} > limit {limit}");
                             return Err(Error::InvalidBlockTarget(target, limit));
                         }
                     }
                     Err(BlockBadProofOfWork) => {
+                        error!("btc BlockBadProofOfWork");
                         return Err(Error::InvalidBlockPoW);
                     }
                     Err(BlockBadTarget) => unreachable! {
@@ -274,6 +281,7 @@ impl<S: Store<Header=BlockHeader>> BlockCache<S> {
         if let Some(height) = self.headers.get(&header.prev_blockhash) {
             // Don't accept any forks from the main chain, prior to the last checkpoint.
             if *height < self.last_checkpoint() {
+                println!("btc InvalidBlockHeight {height} + 1");
                 return Err(Error::InvalidBlockHeight(*height + 1));
             }
         }
@@ -285,6 +293,7 @@ impl<S: Store<Header=BlockHeader>> BlockCache<S> {
         if !self.orphans.contains_key(&header.prev_blockhash)
             && !self.headers.contains_key(&header.prev_blockhash)
         {
+            error!("btc BlockMissing 296");
             return Err(Error::BlockMissing(header.prev_blockhash));
         }
 
@@ -581,17 +590,19 @@ impl<S: Store<Header=BlockHeader>> BlockCache<S> {
         };
 
         #[cfg(feature = "test")]
-            let target = BlockHeader::u256_from_compact_target(header.bits);
+        let target = BlockHeader::u256_from_compact_target(header.bits);
         #[cfg(not(feature = "test"))]
-            let target = BlockHeader::u256_from_compact_target(compact_target);
+        let target = BlockHeader::u256_from_compact_target(compact_target);
 
         match self.params.network {
             Network::Mainnet | Network::Testnet | Network::Regtest | Network::Signet => {
                 match header.validate_pow(&target) {
                     Err(BlockBadProofOfWork) => {
+                        error!("btc BlockBadProofOfWork 600");
                         return Err(Error::InvalidBlockPoW);
                     }
                     Err(BlockBadTarget) => {
+                        error!("btc InvalidBlockTarget 604");
                         return Err(Error::InvalidBlockTarget(header.target(), target));
                     }
                     Err(_) => unreachable!(),
